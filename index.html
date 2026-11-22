@@ -713,8 +713,25 @@ async function inicio(aviso) {
   if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div><button class="b-dark" onclick="inicio()">Reintentar</button>');
   estado.yo = r;
   estado.desfase = new Date(r.servidor.ts).getTime() - Date.now();
+  /* Dirección sin horario no checa: su portada es el tablero, no el reloj.
+     Si algún día le ponen horario, ve el checador con sus accesos abajo. */
+  if (esSoloDireccion() && !estado.verChecador) return pantallaTablero();
   if (!r.perfil.aviso_aceptado) return pantallaAviso();
   pantallaChecador(aviso);
+}
+function esSoloDireccion() {
+  var r = estado.yo;
+  return !!(r && r.perfil.admin && !r.horario_hoy && !r.turno.length);
+}
+function miChecador() { estado.verChecador = true; inicio(); }
+function accesosDireccion() {
+  return '<div class="sub-t" style="margin-top:22px">Dirección</div>' +
+    '<div class="rejilla" style="margin-top:10px">' +
+    '<button class="baldosa" onclick="pantallaReporte()">Reporte para nómina<span class="q">Quincena, retardos, faltas</span></button>' +
+    '<button class="baldosa" onclick="pantallaChecadasDia()">Checadas del día<span class="q">Con foto y ubicación</span></button>' +
+    '<button class="baldosa" onclick="pantallaPersonal()">Personal<span class="q">Altas, horarios, teléfono</span></button>' +
+    '<button class="baldosa" onclick="pantallaSedes()">Sedes<span class="q">Ubicación y radio</span></button>' +
+    '</div>';
 }
 
 function pantallaChecador(aviso) {
@@ -743,14 +760,8 @@ function pantallaChecador(aviso) {
 
   var adm = '';
   if (r.perfil.admin) {
-    adm = '<div class="sub-t" style="margin-top:22px">Dirección</div>' +
-      '<div class="rejilla" style="margin-top:10px">' +
-      '<button class="baldosa fuerte ancha" onclick="pantallaTablero()">Tablero del equipo<span class="q">Quién está, quién no llegó, retardos de hoy</span></button>' +
-      '<button class="baldosa" onclick="pantallaReporte()">Reporte para nómina<span class="q">Quincena, retardos, faltas</span></button>' +
-      '<button class="baldosa" onclick="pantallaChecadasDia()">Checadas del día<span class="q">Con foto y ubicación</span></button>' +
-      '<button class="baldosa" onclick="pantallaPersonal()">Personal<span class="q">Altas, horarios, teléfono</span></button>' +
-      '<button class="baldosa" onclick="pantallaSedes()">Sedes<span class="q">Ubicación y radio</span></button>' +
-      '</div>';
+    adm = '<div class="espacio"></div><button class="b-dark" onclick="estado.verChecador=false;pantallaTablero()">Tablero del equipo</button>' +
+      accesosDireccion();
   }
 
   pintar((aviso || '') +
@@ -1073,9 +1084,13 @@ function pintarTablero() {
   pintar('<div class="tira">' + tira + '</div>' + chips +
     (estado.filtroEstado ? '<div class="aviso a-neutral">Filtrado · <a href="#" onclick="estado.filtroEstado=\'\';pintarTablero();return false">ver a todos</a></div>' : '') +
     '<div class="card">' + (lista || '<p class="sub">Nadie en esta vista.</p>') + '</div>' +
-    (r.personas.length ? '' : '<div class="aviso a-info">Aún no hay personal con horario. Dalo de alta en Personal.</div>') +
-    '<div class="b-fila"><button class="b-ghost" onclick="pantallaTablero()">Actualizar</button>' +
-    '<button class="b-ghost" onclick="inicio()">Volver</button></div>');
+    (r.personas.length ? '' : '<div class="aviso a-info">Aún no hay personal con horario. Dalo de alta en <a href="#" onclick="pantallaPersonal();return false" style="color:inherit">Personal</a>.</div>') +
+    (esSoloDireccion()
+      ? '<button class="b-ghost" onclick="pantallaTablero()">Actualizar</button>' + accesosDireccion() +
+        '<p class="mini centro" style="margin-top:26px">' + esc(estado.yo.perfil.correo) + ' · Dirección · ' +
+        '<a href="#" onclick="salir();return false" style="color:var(--ink-3)">Salir</a></p>'
+      : '<div class="b-fila"><button class="b-ghost" onclick="pantallaTablero()">Actualizar</button>' +
+        '<button class="b-ghost" onclick="inicio()">Volver</button></div>'));
 }
 function dato(n, e, cls, filtro) {
   return '<button class="dato ' + (cls || '') + '" onclick="estado.filtroEstado=(estado.filtroEstado===\'' + filtro + '\'?\'\':\'' + filtro + '\');pintarTablero()">' +
