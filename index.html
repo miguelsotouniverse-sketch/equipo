@@ -1,0 +1,1368 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0C0E0D">
+<title>Equipo · MS Universe</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icono-192.png">
+<link rel="icon" type="image/png" href="icono-192.png">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<script>
+/* Red de seguridad, antes que cualquier otra cosa.
+   Vive aparte y arriba para que sobreviva a un error del script grande.
+
+   Dos reglas aprendidas a golpes:
+   1. Solo se adueña de la pantalla si la app NUNCA logro pintar nada. Si la
+      app ya esta funcionando, un error suelto no debe borrarle la pantalla al
+      usuario: se avisa discreto abajo y ya.
+   2. Reiniciar SIEMPRE recarga, aunque borrar el service worker se atore.
+      Sin el reloj de abajo, en algunos telefonos "Reiniciar" no hacia nada. */
+(function () {
+  window.__appViva = false;
+
+  function chico(txt) {
+    var v = document.getElementById('msu_avisoErr');
+    if (!v) {
+      v = document.createElement('div');
+      v.id = 'msu_avisoErr';
+      v.style.cssText = 'position:fixed;left:10px;right:10px;bottom:10px;z-index:9999;' +
+        'background:#A33F30;color:#fff;padding:11px 13px;border-radius:9px;' +
+        'font:13px -apple-system,system-ui,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,.25)';
+      (document.body || document.documentElement).appendChild(v);
+    }
+    v.innerHTML = '<span style="word-break:break-word">' +
+      String(txt || '').replace(/[<>&]/g, ' ') + '</span>' +
+      '<a href="?reiniciar=1" style="color:#fff;text-decoration:underline;margin-left:10px;' +
+      'white-space:nowrap">Reiniciar</a>';
+  }
+
+  function grande(txt) {
+    var d = document.getElementById('app') || document.body;
+    if (!d || d.getAttribute('data-fallo')) return;
+    d.setAttribute('data-fallo', '1');
+    d.innerHTML =
+      '<div style="padding:20px;font:16px -apple-system,system-ui,sans-serif;color:#0C0E0D">' +
+      '<p style="font-weight:600;margin:0 0 8px">La app no pudo arrancar.</p>' +
+      '<p style="color:#6E736F;font-size:14px;margin:0 0 18px;word-break:break-word">' +
+      String(txt || '').replace(/[<>&]/g, ' ') + '</p>' +
+      '<p style="margin:0 0 10px"><a href="?reiniciar=1" style="display:block;text-align:center;' +
+      'background:#0C0E0D;color:#F4F2F1;padding:14px;border-radius:9px;text-decoration:none">' +
+      'Reiniciar la app</a></p>' +
+      '<p style="margin:0"><a href="?n=' + Date.now() + '" style="display:block;text-align:center;' +
+      'border:1px solid #D8D2CC;color:#3D423F;padding:14px;border-radius:9px;text-decoration:none">' +
+      'Volver a intentar</a></p></div>';
+  }
+
+  function reportar(txt) {
+    if (window.__appViva) chico(txt); else grande(txt);
+  }
+
+  window.addEventListener('error', function (e) {
+    reportar((e.message || 'Error') + (e.filename ? ' (' + e.filename + ':' + e.lineno + ')' : ''));
+  });
+  window.addEventListener('unhandledrejection', function (e) {
+    reportar(String((e.reason && e.reason.message) || e.reason || 'Promesa rechazada'));
+  });
+
+  /* Borron y cuenta nueva: quita el service worker y los caches y recarga.
+     NO toca la sesion: no hay que volver a entrar con Google. */
+  window.reiniciarApp = function () {
+    var yaFue = false;
+    function irse() {
+      if (yaFue) return;
+      yaFue = true;
+      location.replace(location.pathname + '?n=' + Date.now());
+    }
+    setTimeout(irse, 2500);   // pase lo que pase, recarga
+
+    var pasos = [];
+    try {
+      if ('serviceWorker' in navigator && navigator.serviceWorker) {
+        pasos.push(navigator.serviceWorker.getRegistrations().then(function (rs) {
+          return Promise.all(rs.map(function (r) { return r.unregister(); }));
+        }));
+      }
+      if (window.caches) {
+        pasos.push(caches.keys().then(function (ks) {
+          return Promise.all(ks.map(function (k) { return caches.delete(k); }));
+        }));
+      }
+    } catch (err) { /* si algo de esto no existe, igual recargamos */ }
+    Promise.all(pasos).catch(function () {}).then(irse);
+  };
+
+  if (/[?&]reiniciar=1/.test(location.search)) {
+    document.addEventListener('DOMContentLoaded', function () {
+      var d = document.getElementById('app');
+      if (d) d.innerHTML = '<p style="padding:20px;font:16px -apple-system,system-ui,sans-serif;' +
+        'color:#6E736F">Reiniciando la app…</p>';
+    });
+    window.reiniciarApp();
+  }
+})();
+</script>
+<style>
+:root{
+  --ground:#F4F2F1;--surface:#FFFFFF;--surface-2:#EDEAE7;
+  --ink:#0C0E0D;--ink-2:#3D423F;--ink-3:#6E736F;
+  --rule:#D8D2CC;--rule-soft:#E6E1DC;
+  --accent:#A19487;--accent-deep:#6B5D51;
+  --ok:#3F6F52;--warn:#B5842B;--crit:#A33F30;--info:#3C5F79;
+  --tint-ok:rgba(63,111,82,.10);--tint-warn:rgba(181,132,43,.13);
+  --tint-crit:rgba(163,63,48,.10);--tint-info:rgba(60,95,121,.10);
+  --tint-accent:rgba(161,148,135,.15);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{background:var(--ground);color:var(--ink);
+  font-family:'Jost',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-weight:300;font-size:16px;line-height:1.5;-webkit-font-smoothing:antialiased;
+  padding-bottom:env(safe-area-inset-bottom)}
+.mono{font-family:'IBM Plex Mono',ui-monospace,monospace}
+
+header{position:sticky;top:0;z-index:20;background:var(--ink);color:#F4F2F1;
+  padding:calc(10px + env(safe-area-inset-top)) 16px 10px}
+header .fila{display:flex;justify-content:space-between;align-items:center;gap:10px}
+header .marca{display:flex;align-items:center;gap:13px;min-width:0}
+header .ms{height:34px;width:auto;flex:none;opacity:.95}
+header .t{font-weight:500;font-size:1.02rem;line-height:1.2}
+header .s{font-family:'IBM Plex Mono',monospace;font-size:.64rem;letter-spacing:.1em;
+  text-transform:uppercase;color:#9AA09C;margin-top:2px}
+.estado{font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.05em;
+  padding:3px 8px;border-radius:3px;background:rgba(255,255,255,.1);white-space:nowrap}
+.estado.pend{background:var(--tint-warn);color:#E0B369}
+.estado.off{background:var(--tint-crit);color:#E4998A}
+
+main{padding:16px 16px 40px;max-width:680px;margin:0 auto}
+h2{font-size:1.15rem;font-weight:500;margin:0 0 12px}
+p{margin:0 0 12px}
+.sub{color:var(--ink-3);font-size:.9rem}
+.mini{font-size:.82rem;color:var(--ink-3)}
+.centro{text-align:center}
+.oculto{display:none!important}
+.espacio{height:10px}
+.foto-prev{width:100%;max-height:260px;object-fit:contain;border-radius:8px;
+  border:1px solid var(--rule);background:var(--surface-2);margin-top:8px}
+.foto-mini{width:44px;height:44px;object-fit:cover;border-radius:6px;
+  border:1px solid var(--rule);background:var(--surface-2);flex:0 0 auto}
+.sin-foto{width:44px;height:44px;border-radius:6px;border:1px dashed var(--rule);
+  display:flex;align-items:center;justify-content:center;flex:0 0 auto;
+  font-size:.62rem;color:var(--ink-3);text-align:center;line-height:1.1}
+.fila-sku{display:flex;align-items:center;gap:11px;padding:10px 0;
+  border-bottom:1px solid var(--rule);width:100%;background:none;border-left:0;
+  border-right:0;border-top:0;text-align:left;color:inherit;font-family:inherit;
+  font-size:1rem;font-weight:300;cursor:pointer}
+.fila-sku:last-child{border-bottom:0}
+.fila-lote{display:flex;align-items:center;gap:11px;padding:11px 0;
+  border-bottom:1px solid var(--rule);width:100%;background:none;border-left:0;
+  border-right:0;border-top:0;text-align:left;color:inherit;font-family:inherit;
+  font-size:1rem;font-weight:300;cursor:pointer}
+.fila-lote:last-of-type{border-bottom:0}
+.fila-lote .t{flex:1;min-width:0;display:block}
+.fila-lote .t .n{display:block;font-size:.88rem}
+.fila-lote .t .c{display:block;font-family:'IBM Plex Mono',monospace;font-size:.64rem;
+  letter-spacing:.05em;color:var(--ink-3);margin-top:3px}
+.fila-sku .t{flex:1;min-width:0;display:block}
+.fila-sku .t .n{display:block;font-size:.93rem;line-height:1.25}
+.fila-sku .t .c{display:block;font-family:'IBM Plex Mono',monospace;font-size:.66rem;
+  letter-spacing:.06em;color:var(--ink-3);margin-top:3px}
+.g-caja{display:flex;justify-content:center;margin:16px 0 8px;min-height:44px}
+
+.card{background:var(--surface);border:1px solid var(--rule);border-radius:10px;
+  padding:16px;margin-bottom:14px}
+.card h3{margin:0 0 8px;font-size:1rem;font-weight:500}
+
+label{display:block;font-family:'IBM Plex Mono',monospace;font-size:.64rem;
+  letter-spacing:.12em;text-transform:uppercase;color:var(--ink-3);margin:0 0 5px}
+input,select,textarea{width:100%;padding:12px 13px;border:1px solid var(--rule);
+  border-radius:8px;background:var(--surface);color:var(--ink);
+  font-family:inherit;font-size:16px;font-weight:300}
+input:focus,select:focus,textarea:focus{outline:2px solid var(--accent);
+  outline-offset:1px;border-color:var(--accent)}
+.campo{margin-bottom:13px}
+.dos{display:grid;grid-template-columns:1fr 1fr;gap:11px}
+
+button{font-family:inherit;font-size:1rem;font-weight:500;border:0;border-radius:9px;
+  padding:14px;cursor:pointer;width:100%}
+.b-primary{background:var(--accent);color:#15100C}
+.b-dark{background:var(--ink);color:#F4F2F1}
+.b-ghost{background:transparent;border:1px solid var(--rule);color:var(--ink-2)}
+.b-fila{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+button:disabled{opacity:.5}
+button+button{margin-top:9px}
+.b-fila button+button{margin-top:0}
+
+.folio-min{
+  display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  border:1px solid var(--accent);border-radius:8px;padding:9px 12px;margin:12px 0 8px;
+  background:var(--tint-accent);
+}
+.folio-min .k{
+  font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:10px;letter-spacing:.12em;
+  text-transform:uppercase;color:var(--accent-deep);
+}
+.folio-min .v{font-size:1.05rem;color:var(--ink);font-weight:500}
+.masmenos{display:flex;align-items:center;gap:6px;flex-shrink:0}
+.masmenos .uno{
+  width:30px;height:30px;border-radius:7px;border:1px solid var(--rule);
+  background:#fff;color:var(--ink);font-size:17px;line-height:1;padding:0;
+  cursor:pointer;flex-shrink:0;
+}
+.masmenos .uno:disabled{opacity:.3;cursor:default}
+.masmenos .uno.mas{border-color:var(--accent);color:var(--accent-deep)}
+.grupo-caja{
+  font-family:'IBM Plex Mono',ui-monospace,monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;
+  color:var(--accent);margin:14px 0 4px;padding-bottom:3px;
+  border-bottom:1px solid var(--rule);
+}
+.grupo-caja:first-child{margin-top:4px}
+.pill{display:inline-block;font-family:'IBM Plex Mono',monospace;font-size:.62rem;
+  padding:3px 8px;border-radius:3px;letter-spacing:.05em}
+.p-ok{background:var(--tint-ok);color:var(--ok)}
+.p-warn{background:var(--tint-warn);color:var(--warn)}
+.p-crit{background:var(--tint-crit);color:var(--crit)}
+.p-info{background:var(--tint-info);color:var(--info)}
+.p-neutral{background:var(--surface-2);color:var(--ink-3)}
+.sub-t{font-family:'IBM Plex Mono',monospace;font-size:.62rem;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--accent-deep);margin:12px 0 2px;
+  border-bottom:1px solid var(--rule-soft);padding-bottom:4px}
+.sub-t:first-child{margin-top:0}
+/* Los labels de los campos van en versalitas; éste es una frase y tiene que
+   leerse como frase, no a gritos. */
+label.check{display:flex;align-items:flex-start;gap:9px;font-size:.92rem;line-height:1.4;
+  cursor:pointer;color:var(--ink);font-family:'Jost',-apple-system,sans-serif;
+  text-transform:none;letter-spacing:normal;font-weight:400}
+label.check input{width:19px;height:19px;margin:1px 0 0;flex:0 0 auto;accent-color:var(--ink)}
+.mapeo{border-top:1px solid var(--rule-soft);padding:9px 0}
+.mapeo:first-of-type{border-top:0}
+.mapeo .cl{font-family:'IBM Plex Mono',monospace;font-size:.74rem;display:block;
+  color:var(--ink);letter-spacing:.02em}
+.mapeo .cl b{font-weight:500;color:var(--accent-deep)}
+.mapeo .nm{display:block;font-size:.8rem;margin-top:2px}
+.mapeo .po{display:block;font-size:.66rem;color:var(--ink-3);margin-top:1px}
+
+.aviso{padding:12px 14px;border-radius:8px;margin-bottom:14px;font-size:.9rem}
+.a-ok{background:var(--tint-ok);color:var(--ok)}
+.a-err{background:var(--tint-crit);color:var(--crit)}
+.a-warn{background:var(--tint-warn);color:var(--warn)}
+.a-info{background:var(--tint-accent);color:var(--accent-deep)}
+/* Neutro: un aviso que informa sin pedir nada. El de "no se abrió ninguno"
+   cambia a warn en cuanto sí se abre algo, y ese contraste es el que avisa. */
+.a-neutral{background:#F1EEEB;color:var(--ink-2)}
+/* Botón que vive dentro de un renglón de lista: no ocupa el ancho. */
+.b-chico{
+  width:auto;flex-shrink:0;padding:7px 13px;font-size:.85rem;border-radius:7px;
+  background:var(--ink);color:#F4F2F1;margin:0;
+}
+
+.lista .item{display:flex;justify-content:space-between;gap:10px;align-items:center;
+  padding:11px 0;border-bottom:1px solid var(--rule-soft)}
+.lista .item:last-child{border-bottom:0}
+.lista .item .l{min-width:0}
+.lista .item .l span{display:block;font-family:'IBM Plex Mono',monospace;
+  font-size:.6rem;color:var(--ink-3);letter-spacing:.06em}
+.lista .item .l div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:210px}
+/* Hay renglones donde el texto de abajo ES el dato —"sin ninguna cirugía
+   costeada al 100 %"— y cortarlo con puntos suspensivos esconde justo la
+   advertencia. Esos se marcan y se dejan correr en varias líneas. */
+.lista .item .l div.suelta{white-space:normal;overflow:visible;text-overflow:clip;max-width:none}
+
+.linea{border:1px solid var(--rule);border-radius:9px;padding:12px 13px;margin-bottom:10px;
+  background:var(--surface)}
+.linea .cab{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;
+  margin-bottom:6px}
+.linea .cab .nm{font-weight:500;font-size:.94rem;line-height:1.25}
+.linea .datos{font-family:'IBM Plex Mono',monospace;font-size:.7rem;color:var(--ink-3);
+  line-height:1.6}
+.linea .quitar{width:auto;padding:5px 10px;font-size:.72rem;background:transparent;
+  border:1px solid var(--rule);color:var(--ink-3);border-radius:6px;flex:0 0 auto}
+
+/* Un renglón de la lista que se puede abrir. El área de toque es todo el
+   renglón, no un botoncito: esto se usa de pie y con guantes. */
+.lista .item-abre{cursor:pointer;padding-left:4px;padding-right:4px;
+  border-radius:7px;transition:background .12s}
+.lista .item-abre:active{background:var(--surface-2)}
+.lista .item-abre .l span::after{content:' ›';color:var(--ink-3)}
+
+.linea .dest{margin-top:8px;font-size:.86rem;padding:9px 11px}
+
+.folio-lote{background:var(--ink);color:#F4F2F1;border-radius:9px;padding:13px 15px;
+  margin-bottom:9px}
+.folio-lote .n{font-family:'IBM Plex Mono',monospace;font-size:1.15rem;font-weight:600}
+.folio-lote .d{font-size:.8rem;color:#9AA09C;margin-top:3px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ---------- portada: tablero ----------
+   La portada anterior era nueve tarjetas con un párrafo cada una. Se leía
+   como un manual. Un manual se lee una vez; una portada se abre veinte veces
+   al día, de pie y con una mano. Lo que cambia la decisión de quien abre la
+   app son números, no explicaciones. */
+#video{width:100%;border-radius:10px;background:#000;display:block;
+  aspect-ratio:4/3;object-fit:cover}
+#lienzo{display:none}
+.mira{position:relative}
+.mira::after{content:'';position:absolute;inset:18% 14%;border:2px solid #fff;
+  border-radius:10px;opacity:.55;pointer-events:none}
+
+.buscador{display:flex;gap:9px;margin-bottom:14px}
+/* Un campo de busqueda con su boton de escanear al lado. El boton no lleva
+   el ancho completo que tienen los demas botones. */
+.campo-escan{display:grid;grid-template-columns:1fr auto;gap:9px;align-items:stretch}
+.campo-escan button{width:auto;margin-top:0;padding:14px 16px;white-space:nowrap}
+.buscador input{flex:1}
+.buscador button{width:auto;padding:12px 18px;flex:0 0 auto}
+
+.tira{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:9px;
+  margin-bottom:14px}
+.dato{background:var(--surface);border:1px solid var(--rule);border-radius:10px;
+  padding:11px 12px;text-align:left;cursor:pointer;font-family:inherit;
+  color:inherit;width:auto;display:block}
+.dato:active{background:var(--surface-2)}
+.dato .n{font-family:'IBM Plex Mono',monospace;font-size:1.5rem;line-height:1;
+  font-weight:400;display:block}
+.dato .e{display:block;font-size:.74rem;color:var(--ink-3);margin-top:5px;line-height:1.25}
+.dato.d-ok .n{color:var(--ok)}
+.dato.d-warn .n{color:var(--warn)}
+.dato.d-crit .n{color:var(--crit)}
+.dato.d-crit{border-color:rgba(163,63,48,.35);background:var(--tint-crit)}
+.dato.d-warn{border-color:rgba(181,132,43,.35)}
+
+/* Las acciones, sin párrafo. El nombre del botón tiene que bastar; si no
+   basta, el nombre está mal, no le falta un párrafo. */
+.rejilla{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.baldosa{background:var(--surface);border:1px solid var(--rule);border-radius:10px;
+  padding:14px 13px;text-align:left;cursor:pointer;font-family:inherit;color:inherit;
+  font-size:.95rem;font-weight:400;width:auto;display:block;line-height:1.3}
+.baldosa:active{background:var(--surface-2)}
+.baldosa .q{display:block;font-size:.76rem;color:var(--ink-3);margin-top:4px;font-weight:300}
+.baldosa.ancha{grid-column:1 / -1}
+.baldosa.fuerte{background:var(--ink);color:#F4F2F1;border-color:var(--ink)}
+.baldosa.fuerte .q{color:#9AA09C}
+/* Una baldosa que pide atención hoy. Se reserva para lo que bloquea algo:
+   si la usara cualquier pendiente, dejaría de verse. */
+.baldosa.urge{border-color:var(--warn)}
+.baldosa.urge .q{color:var(--warn)}
+
+details.mas{margin-bottom:14px}
+details.mas>summary{cursor:pointer;list-style:none;font-family:'IBM Plex Mono',monospace;
+  font-size:.64rem;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-deep);
+  padding:9px 0;border-bottom:1px solid var(--rule-soft)}
+details.mas>summary::-webkit-details-marker{display:none}
+details.mas>summary::after{content:' +';}
+details.mas[open]>summary::after{content:' −';}
+details.mas>div{padding-top:11px}
+
+/* ---------- filtros en fichas ---------- */
+.chips{display:flex;gap:7px;overflow-x:auto;margin-bottom:12px;padding-bottom:3px;
+  -webkit-overflow-scrolling:touch}
+.chip{flex:0 0 auto;width:auto;padding:7px 13px;border-radius:999px;font-size:.82rem;
+  font-weight:400;background:var(--surface);border:1px solid var(--rule);color:var(--ink-2)}
+.chip.on{background:var(--ink);color:#F4F2F1;border-color:var(--ink)}
+.chip .c{font-family:'IBM Plex Mono',monospace;font-size:.7rem;opacity:.7;margin-left:5px}
+
+/* ---------- existencias por producto ---------- */
+.prod{border-bottom:1px solid var(--rule-soft)}
+.prod:last-child{border-bottom:0}
+.prod>button{display:flex;align-items:center;gap:11px;padding:12px 4px;width:100%;
+  background:none;border:0;text-align:left;color:inherit;font-family:inherit;
+  font-size:1rem;font-weight:300;cursor:pointer;border-radius:7px}
+.prod>button:active{background:var(--surface-2)}
+.prod .t{flex:1;min-width:0}
+.prod .t .n{display:block;font-size:.93rem;line-height:1.25}
+.prod .t .c{display:block;font-family:'IBM Plex Mono',monospace;font-size:.66rem;
+  letter-spacing:.06em;color:var(--ink-3);margin-top:3px}
+.prod .cant{font-family:'IBM Plex Mono',monospace;font-size:1.05rem;flex:0 0 auto;
+  text-align:right;min-width:52px}
+.prod .cant.cero{color:var(--crit)}
+.prod .det{padding:2px 4px 12px;display:none}
+.prod.abierto .det{display:block}
+.prod .det .r{display:flex;justify-content:space-between;gap:10px;align-items:baseline;
+  font-family:'IBM Plex Mono',monospace;font-size:.72rem;color:var(--ink-3);
+  padding:5px 0 5px 12px;border-left:2px solid var(--rule)}
+.prod .det .r b{font-weight:500;color:var(--ink-2)}
+.prod .det .r.vence{color:var(--warn)}
+.prod .det .r.vencido{color:var(--crit)}
+
+/* ---------- checador ---------- */
+.reloj{background:var(--ink);color:#F4F2F1;border-radius:12px;padding:18px 16px 16px;
+  margin-bottom:14px;text-align:center}
+.reloj .h{font-family:'IBM Plex Mono',monospace;font-size:2.7rem;line-height:1;font-weight:400;
+  letter-spacing:.02em}
+.reloj .h small{font-size:1.1rem;color:#9AA09C;margin-left:2px}
+.reloj .f{font-family:'IBM Plex Mono',monospace;font-size:.64rem;letter-spacing:.14em;
+  text-transform:uppercase;color:#9AA09C;margin-top:8px}
+.reloj .hr{font-size:.86rem;color:#D8D2CC;margin-top:6px}
+
+.pasos{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:14px}
+.paso{background:var(--surface);border:1px solid var(--rule);border-radius:9px;padding:9px 6px;
+  text-align:center}
+.paso .k{font-family:'IBM Plex Mono',monospace;font-size:.56rem;letter-spacing:.08em;
+  text-transform:uppercase;color:var(--ink-3);display:block;line-height:1.2;min-height:2.4em}
+.paso .v{font-family:'IBM Plex Mono',monospace;font-size:1rem;display:block;margin-top:4px;color:var(--ink-3)}
+.paso.hecho{border-color:var(--ok);background:var(--tint-ok)}
+.paso.hecho .v{color:var(--ok)}
+.paso.toca{border-color:var(--accent);border-width:2px;padding:8px 5px}
+.paso.toca .v{color:var(--accent-deep)}
+.paso.fuera{border-color:rgba(163,63,48,.45);background:var(--tint-crit)}
+.paso.fuera .v{color:var(--crit)}
+
+.b-grande{font-size:1.15rem;padding:19px 14px;border-radius:12px;letter-spacing:.01em}
+.b-grande .q{display:block;font-size:.78rem;font-weight:300;opacity:.75;margin-top:3px}
+
+.camara{position:relative;border-radius:12px;overflow:hidden;background:#000;margin-bottom:12px;
+  aspect-ratio:3/4;max-height:56vh}
+.camara video,.camara img{width:100%;height:100%;object-fit:cover;display:block}
+.camara video{transform:scaleX(-1)}
+.camara .ovalo{position:absolute;inset:12% 20% 18%;border:2px solid rgba(255,255,255,.6);
+  border-radius:50%;pointer-events:none}
+.ubic{display:flex;align-items:center;gap:10px;padding:11px 13px;border-radius:9px;
+  margin-bottom:12px;font-size:.9rem;border:1px solid var(--rule);background:var(--surface)}
+.ubic .pt{width:10px;height:10px;border-radius:50%;background:var(--ink-3);flex:0 0 auto}
+.ubic.ok{border-color:rgba(63,111,82,.4);background:var(--tint-ok);color:var(--ok)}
+.ubic.ok .pt{background:var(--ok)}
+.ubic.mal{border-color:rgba(163,63,48,.4);background:var(--tint-crit);color:var(--crit)}
+.ubic.mal .pt{background:var(--crit)}
+.ubic.busca .pt{animation:latido 1s infinite}
+@keyframes latido{50%{opacity:.25}}
+
+.hecho-grande{text-align:center;padding:26px 10px 10px}
+.hecho-grande .ic{width:64px;height:64px;border-radius:50%;background:var(--ok);color:#fff;
+  display:flex;align-items:center;justify-content:center;margin:0 auto 14px;font-size:2rem}
+.hecho-grande .ic.warn{background:var(--warn)}
+.hecho-grande .t{font-size:1.25rem;font-weight:500}
+.hecho-grande .h{font-family:'IBM Plex Mono',monospace;font-size:2.2rem;margin:6px 0 4px}
+
+/* ---------- tablero ---------- */
+.persona{border-bottom:1px solid var(--rule-soft)}
+.persona:last-child{border-bottom:0}
+.persona>button{display:flex;align-items:center;gap:11px;padding:12px 4px;width:100%;
+  background:none;border:0;text-align:left;color:inherit;font-family:inherit;
+  font-size:1rem;font-weight:300;cursor:pointer;border-radius:7px;margin:0}
+.persona>button:active{background:var(--surface-2)}
+.persona .t{flex:1;min-width:0}
+.persona .t .n{display:block;font-size:.95rem;line-height:1.25}
+.persona .t .c{display:block;font-family:'IBM Plex Mono',monospace;font-size:.66rem;
+  letter-spacing:.04em;color:var(--ink-3);margin-top:3px}
+.persona .det{padding:2px 4px 12px;display:none}
+.persona.abierto .det{display:block}
+.persona .det .r{display:flex;justify-content:space-between;gap:10px;align-items:center;
+  font-family:'IBM Plex Mono',monospace;font-size:.72rem;color:var(--ink-3);
+  padding:6px 0 6px 12px;border-left:2px solid var(--rule)}
+.persona .det .r b{font-weight:500;color:var(--ink-2)}
+.persona .det .r.mal{border-left-color:var(--crit);color:var(--crit)}
+.ver-foto{width:auto;padding:4px 9px;font-size:.68rem;border-radius:6px;margin:0;
+  background:transparent;border:1px solid var(--rule);color:var(--ink-2);font-weight:400}
+.foto-chk{width:100%;max-width:280px;border-radius:10px;display:block;margin:8px 0}
+
+.tabla{width:100%;border-collapse:collapse;font-size:.82rem}
+.tabla th{font-family:'IBM Plex Mono',monospace;font-size:.58rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);font-weight:400;text-align:right;
+  padding:6px 4px;border-bottom:1px solid var(--rule)}
+.tabla th:first-child,.tabla td:first-child{text-align:left}
+.tabla td{padding:9px 4px;border-bottom:1px solid var(--rule-soft);text-align:right;
+  font-family:'IBM Plex Mono',monospace;font-size:.76rem}
+.tabla td:first-child{font-family:'Jost',sans-serif;font-size:.86rem}
+.tabla tr.abre{cursor:pointer}
+.tabla tr.abre:active td{background:var(--surface-2)}
+.tabla td.mal{color:var(--crit)}
+.tabla td.ojo{color:var(--warn)}
+.envuelve{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+.dias7{display:grid;grid-template-columns:auto 1fr;gap:7px 10px;align-items:center;margin-bottom:12px}
+.dias7 .d{font-family:'IBM Plex Mono',monospace;font-size:.7rem;letter-spacing:.1em;
+  text-transform:uppercase;color:var(--ink-3);width:34px}
+.dias7 input{padding:10px 12px}
+.aviso-priv{font-size:.9rem;line-height:1.55;color:var(--ink-2)}
+.aviso-priv p{margin:0 0 10px}
+.aviso-priv b{font-weight:500;color:var(--ink)}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="fila">
+    <div class="marca">
+      <img class="ms" alt="MS" src="data:image/png;base64,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">
+      <div>
+        <div class="t" id="hTitulo">Equipo</div>
+        <div class="s" id="hSub">MS Universe</div>
+      </div>
+    </div>
+    <span class="estado" id="hEstado">—</span>
+  </div>
+</header>
+
+<main id="app"></main>
+
+<script>
+/* =================================================================
+   Equipo · MS Universe — sistema del personal del grupo
+   Módulo 1: checador de llegada, comida y salida, con ubicación y foto.
+
+   La hora la pone el servidor. La ubicación se toma sólo al checar.
+   ================================================================= */
+
+/* La URL del gateway no es secreto: sin una sesión válida no responde nada. */
+var GATEWAY = 'https://script.google.com/macros/s/AKfycbyHrJc0vKhpC-VyYwJICrh7lJk69EMYvJKNArF-jJvaqi-uAWb1f_LEsU5ABFblUF_b/exec';
+
+var SES_KEY = 'msu_eq_sesion';
+var DISP_KEY = 'msu_eq_disp';
+
+var NOMBRE = {
+  ENTRADA: 'Llegada', SALIDA_COMIDA: 'Salida a comer',
+  REGRESO_COMIDA: 'Regreso de comer', SALIDA: 'Salida'
+};
+var VERBO = {
+  ENTRADA: 'Checar llegada', SALIDA_COMIDA: 'Salir a comer',
+  REGRESO_COMIDA: 'Regresar de comer', SALIDA: 'Checar salida'
+};
+var ORDEN = ['ENTRADA', 'SALIDA_COMIDA', 'REGRESO_COMIDA', 'SALIDA'];
+var DIAS = ['lun', 'mar', 'mie', 'jue', 'vie', 'sab', 'dom'];
+var DIA_LARGO = { lun: 'Lun', mar: 'Mar', mie: 'Mié', jue: 'Jue', vie: 'Vie', sab: 'Sáb', dom: 'Dom' };
+var MARCA = {
+  FALTA: ['Falta', 'p-crit'], RETARDO: ['Retardo', 'p-warn'], COMIDA_LARGA: ['Comida larga', 'p-warn'],
+  SALIDA_ANTES: ['Salió antes', 'p-warn'], SIN_SALIDA: ['Sin salida', 'p-warn'],
+  FUERA_DE_ZONA: ['Fuera de zona', 'p-crit'], OTRO_TELEFONO: ['Otro teléfono', 'p-crit'],
+  TELEFONO_COMPARTIDO: ['Teléfono compartido', 'p-crit'], PRECISION_BAJA: ['GPS impreciso', 'p-neutral'],
+  PENDIENTE: ['Aún no entra', 'p-neutral']
+};
+var ESTADO = {
+  DENTRO: ['Dentro', 'p-ok'], COMIENDO: ['Comiendo', 'p-info'], COMIDA_LARGA: ['Comida larga', 'p-warn'],
+  NO_LLEGA: ['No ha llegado', 'p-crit'], POR_LLEGAR: ['Por llegar', 'p-neutral'],
+  SALIO: ['Ya salió', 'p-neutral'], DESCANSO: ['Descanso', 'p-neutral']
+};
+
+var estado = {
+  sesion: leer(SES_KEY, null),
+  yo: null,
+  desfase: 0,          // ms: hora del servidor − hora del teléfono
+  stream: null,
+  reloj: null,
+  tablero: null,
+  filtroSede: '',
+  reporte: null
+};
+
+/* ---------- utilidades (las mismas de las demás apps) ---------- */
+function leer(k, def) {
+  try { var v = localStorage.getItem(k); return v ? JSON.parse(v) : def; }
+  catch (e) { return def; }
+}
+function escribir(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
+function $(id) { return document.getElementById(id); }
+function pintar(html) {
+  apagarCamara();
+  if (estado.reloj) { clearInterval(estado.reloj); estado.reloj = null; }
+  $('app').innerHTML = html;
+  window.__appViva = true;
+  window.scrollTo(0, 0);
+}
+function esc(s) {
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; });
+}
+function idCliente() { return 'c' + Date.now() + '-' + Math.random().toString(36).slice(2, 8); }
+function encabezado(t, s) { $('hTitulo').textContent = t; $('hSub').textContent = s || 'MS Universe'; }
+function alertar(msg, tipo) {
+  var d = document.createElement('div');
+  d.className = 'aviso ' + (tipo || 'a-info');
+  d.textContent = msg;
+  $('app').prepend(d);
+  window.scrollTo(0, 0);
+  setTimeout(function () { d.remove(); }, 5000);
+}
+function dispositivo() {
+  var d = leer(DISP_KEY, null);
+  if (!d) { d = 'T' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10); escribir(DISP_KEY, d); }
+  return d;
+}
+function pill(par) { return '<span class="pill ' + par[1] + '">' + esc(par[0]) + '</span>'; }
+function marcas(lista) {
+  return (lista || []).filter(Boolean).map(function (m) { return pill(MARCA[m] || [m, 'p-neutral']); }).join(' ');
+}
+function hm(min) {
+  if (min == null) return '—';
+  var h = Math.floor(min / 60), m = Math.round(min % 60);
+  return h + ':' + (m < 10 ? '0' : '') + m;
+}
+function horaServidor() { return new Date(Date.now() + estado.desfase); }
+function fechaLarga(iso) {
+  var p = iso.split('-');
+  var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2], 12));
+  return d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'UTC' });
+}
+function fechaCorta(iso) {
+  var p = iso.split('-');
+  var d = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2], 12));
+  return d.toLocaleDateString('es-MX', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' });
+}
+function pintarEstado() {
+  var e = $('hEstado');
+  if (!navigator.onLine) { e.textContent = '● sin señal'; e.className = 'estado off'; }
+  else { e.textContent = '● en línea'; e.className = 'estado'; }
+}
+
+/* ---------- transporte ---------- */
+async function enviar(payload) {
+  if (estado.sesion && estado.sesion.sesion) payload.sesion = estado.sesion.sesion;
+  var res = await fetch(GATEWAY, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload)
+  });
+  var datos = await res.json();
+  /* Si Apps Script tarda, el redirect del POST cae en doGet y regresa la
+     ficha del servicio con ok:true y nada más. Eso es una respuesta perdida,
+     no una respuesta buena. */
+  if (datos && datos.servicio === 'PersonalGateway' && payload.accion !== 'ping') {
+    var e = new Error('El servidor tardó demasiado y no contestó. Revisa antes de repetir.');
+    e.sinRespuesta = true;
+    throw e;
+  }
+  if (datos && datos.ok === false && MOTIVOS_SESION[datos.error]) cerrarSesion(MOTIVOS_SESION[datos.error]);
+  return datos;
+}
+
+/* =================================================================
+   Sesión
+   ================================================================= */
+var MOTIVOS_SESION = {
+  SIN_SESION: 'Entra con tu cuenta de Google.',
+  SESION_INVALIDA: 'Tu sesión ya no es válida. Vuelve a entrar.',
+  SESION_EXPIRADA: 'Tu sesión caducó. Vuelve a entrar con Google.',
+  SESION_REVOCADA: 'Tu acceso fue dado de baja. Habla con gerencia.'
+};
+
+function cerrarSesion(msg) {
+  estado.sesion = null; estado.yo = null;
+  escribir(SES_KEY, null);
+  pantallaLogin(msg);
+}
+
+var GIS_LISTO = null;
+function cargarGIS() {
+  if (GIS_LISTO) return GIS_LISTO;
+  GIS_LISTO = new Promise(function (ok, falla) {
+    if (window.google && google.accounts && google.accounts.id) return ok();
+    var s = document.createElement('script');
+    s.src = 'https://accounts.google.com/gsi/client';
+    s.async = true; s.defer = true;
+    s.onload = function () { ok(); };
+    s.onerror = function () { GIS_LISTO = null; falla(new Error('No se pudo cargar Google')); };
+    document.head.appendChild(s);
+  });
+  return GIS_LISTO;
+}
+
+async function entrarConGoogle(cred) {
+  var r = await enviar({ accion: 'login_google', idToken: cred, dispositivo: navigator.userAgent });
+  if (!r.ok) return pantallaLogin(r.error);
+  estado.sesion = { sesion: r.sesion, usuario: r.correo, nombre: r.nombre, rol: r.rol };
+  escribir(SES_KEY, estado.sesion);
+  inicio();
+}
+
+function pantallaLogin(msg) {
+  encabezado('Entrar', 'Equipo');
+  pintar((msg ? '<div class="aviso a-err">' + esc(msg) + '</div>' : '') +
+    '<div class="card">' +
+    '<p class="sub">Entra con la cuenta de Google que tengas dada de alta en el equipo. ' +
+    'Cada checada queda firmada con ese correo.</p>' +
+    '<div id="gBtn" class="g-caja"></div>' +
+    '<div id="gMsg" class="mini centro"></div></div>');
+  prepararBotonGoogle();
+}
+
+async function prepararBotonGoogle() {
+  var msg = $('gMsg');
+  try {
+    if (!window.isSecureContext) { msg.innerHTML = 'Esta página tiene que abrirse con <b>https://</b>.'; return; }
+    var cfg = await enviar({ accion: 'config_publica' });
+    if (!cfg.ok || !cfg.google_activo) { msg.textContent = 'Falta configurar GOOGLE_CLIENT_ID en el gateway.'; return; }
+    await cargarGIS();
+    google.accounts.id.initialize({
+      client_id: cfg.google_client_id,
+      callback: function (resp) {
+        $('gMsg').textContent = 'Verificando…';
+        entrarConGoogle(resp.credential).catch(function () { pantallaLogin('Sin conexión. Intenta de nuevo.'); });
+      }
+    });
+    google.accounts.id.renderButton($('gBtn'), {
+      theme: 'outline', size: 'large', shape: 'pill', text: 'signin_with', locale: 'es', width: 260
+    });
+    msg.textContent = '';
+  } catch (e) { msg.textContent = 'No se pudo contactar a Google. Revisa tu conexión.'; }
+}
+
+/* =================================================================
+   Inicio: el checador es la portada de todos
+   ================================================================= */
+async function inicio(aviso) {
+  if (!estado.sesion) return pantallaLogin();
+  encabezado('Checador', estado.sesion.nombre || 'Equipo');
+  if (!estado.yo) pintar('<p class="sub centro" style="padding-top:30px">Cargando…</p>');
+  var r;
+  try { r = await enviar({ accion: 'yo' }); }
+  catch (e) {
+    return pintar('<div class="aviso a-err">Sin conexión con el servidor. Para checar se necesita señal: ' +
+      'la hora la pone el servidor, no el teléfono.</div>' +
+      '<button class="b-dark" onclick="inicio()">Reintentar</button>');
+  }
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div><button class="b-dark" onclick="inicio()">Reintentar</button>');
+  estado.yo = r;
+  estado.desfase = new Date(r.servidor.ts).getTime() - Date.now();
+  if (!r.perfil.aviso_aceptado) return pantallaAviso();
+  pantallaChecador(aviso);
+}
+
+function pantallaChecador(aviso) {
+  var r = estado.yo;
+  encabezado('Checador', r.perfil.nombre);
+  var porTipo = {};
+  r.turno.forEach(function (c) { porTipo[c.tipo] = c; });
+  var toca = r.siguientes[0];
+  var pasos = ORDEN.map(function (t) {
+    var c = porTipo[t];
+    var cls = c ? (c.estatus === 'FUERA_DE_ZONA' ? 'paso fuera' : 'paso hecho') : (t === toca ? 'paso toca' : 'paso');
+    return '<div class="' + cls + '"><span class="k">' + NOMBRE[t] + '</span>' +
+      '<span class="v">' + (c ? c.hora : '—') + '</span></div>';
+  }).join('');
+
+  var botones = '';
+  if (r.siguientes.length === 2) {
+    botones = '<button class="b-dark b-grande" onclick="flujoChecar(\'' + r.siguientes[0] + '\')">' +
+      VERBO[r.siguientes[0]] + '</button>' +
+      '<button class="b-ghost" onclick="flujoChecar(\'' + r.siguientes[1] + '\')">' +
+      VERBO[r.siguientes[1]] + ' (sin comida)</button>';
+  } else {
+    botones = '<button class="b-dark b-grande" onclick="flujoChecar(\'' + toca + '\')">' + VERBO[toca] +
+      (toca === 'REGRESO_COMIDA' ? '<span class="q" id="minComida"></span>' : '') + '</button>';
+  }
+
+  var adm = '';
+  if (r.perfil.admin) {
+    adm = '<div class="sub-t" style="margin-top:22px">Dirección</div>' +
+      '<div class="rejilla" style="margin-top:10px">' +
+      '<button class="baldosa fuerte ancha" onclick="pantallaTablero()">Tablero del equipo<span class="q">Quién está, quién no llegó, retardos de hoy</span></button>' +
+      '<button class="baldosa" onclick="pantallaReporte()">Reporte para nómina<span class="q">Quincena, retardos, faltas</span></button>' +
+      '<button class="baldosa" onclick="pantallaChecadasDia()">Checadas del día<span class="q">Con foto y ubicación</span></button>' +
+      '<button class="baldosa" onclick="pantallaPersonal()">Personal<span class="q">Altas, horarios, teléfono</span></button>' +
+      '<button class="baldosa" onclick="pantallaSedes()">Sedes<span class="q">Ubicación y radio</span></button>' +
+      '</div>';
+  }
+
+  pintar((aviso || '') +
+    '<div class="reloj"><div class="h" id="rH">--:--</div>' +
+    '<div class="f" id="rF"></div>' +
+    '<div class="hr">' + (r.horario_hoy ? 'Tu horario hoy: ' + esc(r.horario_hoy) : 'Hoy no tienes horario asignado') + '</div></div>' +
+    '<div class="pasos">' + pasos + '</div>' +
+    botones +
+    '<div class="espacio"></div>' +
+    '<button class="b-ghost" onclick="pantallaMias()">Mis últimos 15 días</button>' +
+    adm +
+    '<p class="mini centro" style="margin-top:26px">' + esc(r.perfil.correo) +
+    ' · <a href="#" onclick="salir();return false" style="color:var(--ink-3)">Salir</a></p>');
+
+  var sc = porTipo.SALIDA_COMIDA;
+  function tic() {
+    var d = horaServidor();
+    var hh = d.toLocaleTimeString('es-MX', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Mexico_City' });
+    var ss = d.toLocaleTimeString('es-MX', { second: '2-digit', timeZone: 'America/Mexico_City' });
+    if ($('rH')) $('rH').innerHTML = hh + '<small>:' + ('0' + ss).slice(-2) + '</small>';
+    if ($('rF')) $('rF').textContent = d.toLocaleDateString('es-MX', { weekday: 'long', day: 'numeric', month: 'long', timeZone: 'America/Mexico_City' });
+    if (sc && $('minComida')) {
+      var ahoraHMS = d.toLocaleTimeString('en-GB', { hour12: false, timeZone: 'America/Mexico_City' });
+      var min = Math.floor(minDesde(sc.hora, ahoraHMS));
+      $('minComida').textContent = 'Llevas ' + min + ' de ' + r.perfil.comida_min + ' min de comida';
+    }
+  }
+  tic();
+  estado.reloj = setInterval(tic, 1000);
+}
+/* Minutos que habían pasado entre la hora a y la hora b (HH:MM[:SS]) del mismo día o cruzando medianoche. */
+function minDesde(a, b) {
+  function m(x) { var p = String(x).split(':'); return +p[0] * 60 + +p[1] + (+p[2] || 0) / 60; }
+  var d = m(b) - m(a);
+  return d < 0 ? d + 1440 : d;
+}
+
+async function salir() {
+  try { await enviar({ accion: 'salir' }); } catch (e) {}
+  cerrarSesion();
+}
+
+/* ---------- aviso de privacidad ---------- */
+function pantallaAviso() {
+  encabezado('Antes de empezar', 'Equipo');
+  pintar('<div class="card aviso-priv">' +
+    '<h3>Aviso de privacidad del checador</h3>' +
+    '<p>Para registrar tu asistencia, al momento de <b>cada checada</b> la app toma:</p>' +
+    '<p>· <b>Tu ubicación</b>, sólo en ese instante, para confirmar que checas en una sede del grupo. ' +
+    'La app <b>no te rastrea</b> durante el día ni fuera del trabajo.<br>' +
+    '· <b>Una foto de tu rostro</b>, para confirmar que quien checa eres tú.<br>' +
+    '· <b>La hora del servidor</b> y un identificador de tu teléfono.</p>' +
+    '<p>Estos datos se usan únicamente para el control de asistencia, puntualidad y nómina. ' +
+    'Los consulta sólo dirección y gerencia, se guardan en sistemas privados del grupo y no se comparten con terceros, ' +
+    'salvo obligación legal.</p>' +
+    '<p>Puedes ejercer tus derechos de acceso, rectificación, cancelación u oposición con gerencia.</p>' +
+    '</div>' +
+    '<label class="check" style="margin-bottom:14px"><input type="checkbox" id="acepto"> ' +
+    'Leí el aviso y acepto que mis checadas registren ubicación y foto.</label>' +
+    '<button class="b-dark" onclick="aceptarAviso()">Continuar</button>');
+}
+async function aceptarAviso() {
+  if (!$('acepto').checked) return alertar('Marca la casilla para continuar.', 'a-warn');
+  var r = await enviar({ accion: 'aceptar_aviso' });
+  if (!r.ok) return alertar(r.error, 'a-err');
+  estado.yo = null;
+  inicio();
+}
+
+/* =================================================================
+   Flujo de checada: ubicación + foto + envío
+   ================================================================= */
+var flujo = null;
+
+function flujoChecar(tipo) {
+  flujo = { tipo: tipo, pos: null, foto: null, client_id: idCliente(), motivo: '' };
+  encabezado(NOMBRE[tipo], estado.yo.perfil.nombre);
+  pintar('<div class="ubic busca" id="ubic"><span class="pt"></span><span id="ubicT">Buscando tu ubicación…</span></div>' +
+    '<div class="camara mira" id="cam"><video id="video" autoplay playsinline muted></video><div class="ovalo"></div></div>' +
+    '<input type="file" id="fotoArchivo" accept="image/*" capture="user" class="oculto" onchange="fotoDeArchivo(this)">' +
+    '<div id="acciones"><button class="b-dark b-grande" id="bFoto" onclick="tomarFoto()">Tomar foto y checar</button></div>' +
+    '<button class="b-ghost" onclick="inicio()">Cancelar</button>');
+  buscarUbicacion();
+  prenderCamara();
+}
+
+function buscarUbicacion() {
+  if (!navigator.geolocation) return ubic('mal', 'Este teléfono no permite leer la ubicación.');
+  var mejor = null, fin = Date.now() + 12000, id;
+  function cerrar() { if (id != null) navigator.geolocation.clearWatch(id); id = null; }
+  id = navigator.geolocation.watchPosition(function (p) {
+    if (!flujo) return cerrar();
+    if (!mejor || p.coords.accuracy < mejor.coords.accuracy) mejor = p;
+    flujo.pos = { lat: mejor.coords.latitude, lng: mejor.coords.longitude, precision: mejor.coords.accuracy };
+    pintarUbic();
+    if (mejor.coords.accuracy <= 25 || Date.now() > fin) cerrar();
+  }, function (err) {
+    cerrar();
+    if (err.code === 1) ubic('mal', 'Diste «no permitir» a la ubicación. Actívala en los permisos del navegador para esta página y vuelve a intentar.');
+    else if (!flujo || !flujo.pos) ubic('mal', 'No se pudo leer tu ubicación. Sal a un lugar con mejor señal o activa el GPS.');
+  }, { enableHighAccuracy: true, maximumAge: 0, timeout: 15000 });
+  setTimeout(cerrar, 15000);
+}
+
+function distancia(a, b, c, d) {
+  var R = 6371000, r = Math.PI / 180;
+  var x = Math.sin((c - a) * r / 2), y = Math.sin((d - b) * r / 2);
+  var h = x * x + Math.cos(a * r) * Math.cos(c * r) * y * y;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function pintarUbic() {
+  var p = flujo.pos, mejor = null;
+  (estado.yo.sedes || []).forEach(function (s) {
+    if (s.lat == null) return;
+    var d = distancia(p.lat, p.lng, s.lat, s.lng);
+    if (!mejor || d < mejor.d) mejor = { s: s, d: d };
+  });
+  if (!mejor) return ubic('', 'Ubicación lista (±' + Math.round(p.precision) + ' m)');
+  var dentro = mejor.d <= mejor.s.radio_m || (p.precision <= 150 && mejor.d - p.precision <= mejor.s.radio_m);
+  if (dentro) ubic('ok', 'Estás en ' + mejor.s.nombre + ' · ±' + Math.round(p.precision) + ' m');
+  else ubic('mal', 'Estás a ' + (mejor.d > 1500 ? (mejor.d / 1000).toFixed(1) + ' km' : Math.round(mejor.d) + ' m') +
+            ' de ' + mejor.s.nombre + ' (±' + Math.round(p.precision) + ' m)');
+}
+function ubic(cls, txt) {
+  var u = $('ubic'); if (!u) return;
+  u.className = 'ubic ' + cls; $('ubicT').textContent = txt;
+}
+
+async function prenderCamara() {
+  try {
+    estado.stream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: 'user', width: { ideal: 720 }, height: { ideal: 960 } }, audio: false });
+    var v = $('video');
+    if (!v) return apagarCamara();
+    v.srcObject = estado.stream;
+  } catch (e) {
+    // Sin cámara en vivo: se usa la cámara del sistema.
+    var c = $('cam'); if (c) c.innerHTML = '<div class="sub centro" style="color:#fff;padding:40% 20px 0">' +
+      'Toca el botón para abrir la cámara frontal.</div>';
+    var b = $('bFoto'); if (b) b.onclick = function () { $('fotoArchivo').click(); };
+  }
+}
+function apagarCamara() {
+  if (estado.stream) { estado.stream.getTracks().forEach(function (t) { t.stop(); }); estado.stream = null; }
+}
+
+function tomarFoto() {
+  var v = $('video');
+  if (!v || !v.videoWidth) return $('fotoArchivo').click();
+  var w = 360, h = Math.round(v.videoHeight * w / v.videoWidth);
+  var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+  var cx = cv.getContext('2d');
+  cx.translate(w, 0); cx.scale(-1, 1);
+  cx.drawImage(v, 0, 0, w, h);
+  flujo.foto = cv.toDataURL('image/jpeg', 0.7);
+  apagarCamara();
+  $('cam').innerHTML = '<img src="' + flujo.foto + '" alt="">';
+  enviarChecada();
+}
+function fotoDeArchivo(inp) {
+  var f = inp.files && inp.files[0]; if (!f) return;
+  var lector = new FileReader();
+  lector.onload = function (ev) {
+    var img = new Image();
+    img.onload = function () {
+      var w = 360, h = Math.round(img.height * w / img.width);
+      var cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+      cv.getContext('2d').drawImage(img, 0, 0, w, h);
+      flujo.foto = cv.toDataURL('image/jpeg', 0.7);
+      $('cam').innerHTML = '<img src="' + flujo.foto + '" alt="">';
+      enviarChecada();
+    };
+    img.src = ev.target.result;
+  };
+  lector.readAsDataURL(f);
+}
+
+async function esperarUbicacion() {
+  for (var i = 0; i < 30 && flujo && !flujo.pos; i++) await new Promise(function (r) { setTimeout(r, 500); });
+  return flujo && flujo.pos;
+}
+
+async function enviarChecada() {
+  var acc = $('acciones');
+  acc.innerHTML = '<button class="b-dark b-grande" disabled>Enviando…</button>';
+  if (!flujo.pos) {
+    acc.innerHTML = '<button class="b-dark b-grande" disabled>Esperando tu ubicación…</button>';
+    if (!(await esperarUbicacion())) {
+      acc.innerHTML = '<button class="b-dark b-grande" onclick="reintentarUbic()">Volver a buscar ubicación</button>';
+      return;
+    }
+  }
+  var r;
+  try {
+    r = await enviar({ accion: 'checar', tipo: flujo.tipo, lat: flujo.pos.lat, lng: flujo.pos.lng,
+      precision: flujo.pos.precision, selfie: flujo.foto, dispositivo: dispositivo(),
+      motivo: flujo.motivo, client_id: flujo.client_id });
+  } catch (e) {
+    acc.innerHTML = '<div class="aviso a-err">' + esc(e.message || 'Sin conexión.') + '</div>' +
+      '<button class="b-dark b-grande" onclick="enviarChecada()">Reintentar</button>';
+    return;
+  }
+  if (!r.ok && r.error === 'FUERA_DE_ZONA') {
+    acc.innerHTML = '<div class="aviso a-err">Tu ubicación marca que estás a <b>' +
+      (r.distancia_m > 1500 ? (r.distancia_m / 1000).toFixed(1) + ' km' : r.distancia_m + ' m') +
+      '</b> de ' + esc(r.sede) + ' (la zona es de ' + r.radio_m + ' m' +
+      (r.precision_m ? ', tu GPS ±' + r.precision_m + ' m' : '') + ').</div>' +
+      '<p class="sub">Si estás en la sede y el GPS falla, puedes volver a intentar junto a una ventana. ' +
+      'Si de verdad estás fuera (curso, diligencia, otra ubicación), explica el motivo: la checada queda registrada ' +
+      '<b>fuera de zona</b> y la revisa gerencia.</p>' +
+      '<button class="b-dark" onclick="reintentarUbic()">Volver a buscar ubicación</button>' +
+      '<div class="campo" style="margin-top:14px"><label>Motivo</label>' +
+      '<textarea id="motivo" rows="2" placeholder="Ej. diligencia en el banco por encargo de gerencia"></textarea></div>' +
+      '<button class="b-ghost" onclick="conMotivo()">Checar fuera de zona con este motivo</button>';
+    return;
+  }
+  if (!r.ok) {
+    if (r.error === 'AVISO_PENDIENTE') return pantallaAviso();
+    acc.innerHTML = '<div class="aviso a-err">' + esc(r.error) + '</div>' +
+      '<button class="b-dark" onclick="inicio()">Volver</button>';
+    return;
+  }
+  var c = r.checada;
+  var fuera = c.estatus === 'FUERA_DE_ZONA';
+  flujo = null;
+  encabezado(NOMBRE[c.tipo], estado.yo.perfil.nombre);
+  pintar('<div class="hecho-grande"><div class="ic' + (fuera ? ' warn' : '') + '">' + (fuera ? '!' : '✓') + '</div>' +
+    '<div class="t">' + esc(c.nombre_tipo) + ' registrada</div>' +
+    '<div class="h">' + esc(c.hora) + '</div>' +
+    '<p class="sub">' + esc(c.sede) + (fuera ? ' · fuera de zona, la revisa gerencia' : '') + '</p></div>' +
+    (c.alertas && c.alertas.indexOf('OTRO_TELEFONO') >= 0 ?
+      '<div class="aviso a-warn">Checaste desde un teléfono distinto al que tienes registrado. Gerencia lo verá marcado.</div>' : '') +
+    '<button class="b-dark" onclick="inicio()">Listo</button>');
+  estado.yo = null;
+}
+function reintentarUbic() {
+  flujo.pos = null; flujo.motivo = '';
+  ubic('busca', 'Buscando tu ubicación…');
+  buscarUbicacion();
+  enviarChecada();
+}
+function conMotivo() {
+  var m = ($('motivo').value || '').trim();
+  if (m.length < 5) return alertar('Escribe el motivo (al menos unas palabras).', 'a-warn');
+  flujo.motivo = m;
+  enviarChecada();
+}
+
+/* =================================================================
+   Mis checadas
+   ================================================================= */
+async function pantallaMias() {
+  encabezado('Mis checadas', 'Últimos 15 días');
+  pintar('<p class="sub centro" style="padding-top:30px">Cargando…</p>');
+  var r = await enviar({ accion: 'mis_checadas' });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div>');
+  var dias = r.dias.slice().reverse();
+  pintar('<div class="card">' + (dias.length ? dias.map(function (d) {
+    return '<div class="lista"><div class="item"><div class="l"><span>' + esc(fechaCorta(d.fecha)) + ' · ' + esc(d.horario) + '</span>' +
+      '<div class="suelta">' + (d.llegada || '—') + ' → ' + (d.salida || '—') +
+      (d.min_comida != null ? ' · comida ' + d.min_comida + ' min' : '') + '</div></div>' +
+      '<div style="text-align:right">' + marcas(d.marcas.filter(function (m) { return m !== 'PRECISION_BAJA'; })) +
+      (d.min_trabajados != null ? '<div class="mini mono">' + hm(d.min_trabajados) + ' h</div>' : '') + '</div></div></div>';
+  }).join('') : '<p class="sub">Sin checadas todavía.</p>') + '</div>' +
+    '<button class="b-ghost" onclick="inicio()">Volver</button>');
+}
+
+/* =================================================================
+   Tablero del equipo (dirección y gerencia)
+   ================================================================= */
+async function pantallaTablero() {
+  encabezado('Tablero del equipo', 'Hoy');
+  pintar('<p class="sub centro" style="padding-top:30px">Cargando…</p>');
+  var r = await enviar({ accion: 'tablero_hoy' });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div><button class="b-ghost" onclick="inicio()">Volver</button>');
+  estado.tablero = r;
+  pintarTablero();
+}
+function pintarTablero() {
+  var r = estado.tablero, c = r.cuenta;
+  encabezado('Tablero del equipo', fechaLarga(r.servidor.fecha) + ' · ' + r.servidor.hora);
+  var tira =
+    dato(c.DENTRO, 'trabajando ahora', 'd-ok', 'DENTRO') +
+    dato(c.COMIENDO + c.COMIDA_LARGA, 'en comida' + (c.COMIDA_LARGA ? ' · ' + c.COMIDA_LARGA + ' pasados' : ''), c.COMIDA_LARGA ? 'd-warn' : '', 'COMIENDO') +
+    dato(c.NO_LLEGA, 'no han llegado', c.NO_LLEGA ? 'd-crit' : '', 'NO_LLEGA') +
+    dato(r.retardos, 'retardos hoy', r.retardos ? 'd-warn' : '', 'RETARDO') +
+    (r.incidencias ? dato(r.incidencias, 'con incidencia', 'd-crit', 'INCID') : '');
+  var chips = '<div class="chips"><button class="chip' + (!estado.filtroSede ? ' on' : '') + '" onclick="filtrarSede(\'\')">Todas</button>' +
+    r.sedes.map(function (s) {
+      var n = r.personas.filter(function (p) { return p.sede_id === s.id; }).length;
+      return '<button class="chip' + (estado.filtroSede === s.id ? ' on' : '') + '" onclick="filtrarSede(\'' + s.id + '\')">' +
+        esc(s.nombre) + '<span class="c">' + n + '</span></button>';
+    }).join('') + '</div>';
+
+  var orden = { NO_LLEGA: 0, COMIDA_LARGA: 1, DENTRO: 2, COMIENDO: 3, POR_LLEGAR: 4, SALIO: 5, DESCANSO: 6 };
+  var gente = r.personas.filter(function (p) {
+    if (estado.filtroSede && p.sede_id !== estado.filtroSede) return false;
+    if (estado.filtroEstado === 'DENTRO') return p.estado === 'DENTRO';
+    if (estado.filtroEstado === 'COMIENDO') return p.estado === 'COMIENDO' || p.estado === 'COMIDA_LARGA';
+    if (estado.filtroEstado === 'NO_LLEGA') return p.estado === 'NO_LLEGA';
+    if (estado.filtroEstado === 'RETARDO') return p.retardo_min > 0;
+    if (estado.filtroEstado === 'INCID') return p.alertas.length > 0;
+    return true;
+  }).sort(function (a, b) { return (orden[a.estado] - orden[b.estado]) || a.nombre.localeCompare(b.nombre); });
+
+  var lista = gente.map(function (p, i) {
+    var al = p.alertas.filter(function (a) { return a !== 'PRECISION_BAJA'; });
+    return '<div class="persona" id="per' + i + '"><button onclick="this.parentNode.classList.toggle(\'abierto\')">' +
+      '<span class="t"><span class="n">' + esc(p.nombre) + '</span>' +
+      '<span class="c">' + esc(p.puesto || '') + (p.detalle ? ' · ' + esc(p.detalle) : '') +
+      (p.sede ? ' · ' + esc(p.sede) : '') + '</span></span>' +
+      '<span style="text-align:right">' + pill(ESTADO[p.estado]) +
+      (p.retardo_min ? '<br>' + pill(['+' + p.retardo_min + ' min', 'p-warn']) : '') +
+      (al.length ? '<br>' + marcas(al) : '') + '</span></button>' +
+      '<div class="det">' + (p.checadas.length ? p.checadas.map(filaChecada).join('') :
+        '<p class="mini" style="padding-left:12px">Sin checadas hoy. Horario: ' + esc(p.horario || 'descanso') + '</p>') +
+      '</div></div>';
+  }).join('');
+
+  pintar('<div class="tira">' + tira + '</div>' + chips +
+    (estado.filtroEstado ? '<div class="aviso a-neutral">Filtrado · <a href="#" onclick="estado.filtroEstado=\'\';pintarTablero();return false">ver a todos</a></div>' : '') +
+    '<div class="card">' + (lista || '<p class="sub">Nadie en esta vista.</p>') + '</div>' +
+    (r.personas.length ? '' : '<div class="aviso a-info">Aún no hay personal con horario. Dalo de alta en Personal.</div>') +
+    '<div class="b-fila"><button class="b-ghost" onclick="pantallaTablero()">Actualizar</button>' +
+    '<button class="b-ghost" onclick="inicio()">Volver</button></div>');
+}
+function dato(n, e, cls, filtro) {
+  return '<button class="dato ' + (cls || '') + '" onclick="estado.filtroEstado=(estado.filtroEstado===\'' + filtro + '\'?\'\':\'' + filtro + '\');pintarTablero()">' +
+    '<span class="n">' + n + '</span><span class="e">' + e + '</span></button>';
+}
+function filtrarSede(id) { estado.filtroSede = id; pintarTablero(); }
+
+function filaChecada(c) {
+  var mal = c.estatus === 'FUERA_DE_ZONA' || /OTRO_TELEFONO|TELEFONO_COMPARTIDO/.test(c.alertas || '');
+  var fid = 'f' + c.id.replace(/\W/g, '');
+  return '<div class="r' + (mal ? ' mal' : '') + '"><span><b>' + esc(c.hora) + '</b> ' + esc(c.nombre_tipo) +
+    ' · ' + esc(c.sede) + ' · ' + c.distancia_m + ' m' +
+    (c.motivo ? '<br>«' + esc(c.motivo) + '»' : '') +
+    (c.alertas ? '<br>' + marcas(c.alertas.split(' ')) : '') + '</span>' +
+    (c.tiene_foto ? '<button class="ver-foto" onclick="verFoto(\'' + c.id + '\',\'' + fid + '\',this)">Foto</button>' : '') +
+    '</div><div id="' + fid + '"></div>';
+}
+var FOTOS = {};
+async function verFoto(id, destino, btn) {
+  var d = $(destino);
+  if (d.innerHTML) { d.innerHTML = ''; return; }
+  btn.textContent = '…';
+  try {
+    if (!FOTOS[id]) {
+      var r = await enviar({ accion: 'selfie', id: idFoto(id) });
+      if (!r.ok) throw new Error(r.error);
+      FOTOS[id] = r.imagen;
+    }
+    d.innerHTML = '<img class="foto-chk" src="' + FOTOS[id] + '" alt="">';
+  } catch (e) { d.innerHTML = '<p class="mini">No se pudo traer la foto.</p>'; }
+  btn.textContent = 'Foto';
+}
+/* El tablero recibe el id de la checada; el backend guarda el de la foto.
+   Se resuelve en el servidor para no exponer ids de Drive en el tablero. */
+function idFoto(idChecada) { return idChecada; }
+
+/* ---------- checadas del día ---------- */
+async function pantallaChecadasDia(fecha) {
+  encabezado('Checadas del día', '');
+  pintar('<p class="sub centro" style="padding-top:30px">Cargando…</p>');
+  var r = await enviar({ accion: 'checadas_dia', fecha: fecha || '' });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div>');
+  encabezado('Checadas del día', fechaLarga(r.fecha));
+  pintar('<div class="campo"><label>Fecha</label><input type="date" value="' + r.fecha + '" onchange="pantallaChecadasDia(this.value)"></div>' +
+    '<div class="card persona abierto" style="border:1px solid var(--rule)"><div class="det">' +
+    (r.checadas.length ? r.checadas.map(function (c) {
+      return '<div class="mini" style="margin:8px 0 2px;color:var(--ink)">' + esc(c.nombre) + '</div>' + filaChecada(c);
+    }).join('') : '<p class="sub">Sin checadas ese día.</p>') + '</div></div>' +
+    '<button class="b-ghost" onclick="inicio()">Volver</button>');
+}
+
+/* =================================================================
+   Reporte para nómina
+   ================================================================= */
+function quincena(desplazar) {
+  var d = horaServidor();
+  var f = new Date(d.toLocaleString('en-US', { timeZone: 'America/Mexico_City' }));
+  var y = f.getFullYear(), m = f.getMonth(), q = f.getDate() <= 15 ? 0 : 1;
+  var idx = y * 24 + m * 2 + q + (desplazar || 0);
+  y = Math.floor(idx / 24); m = Math.floor((idx % 24) / 2); q = idx % 2;
+  function iso(a, b, c) { return a + '-' + ('0' + (b + 1)).slice(-2) + '-' + ('0' + c).slice(-2); }
+  var ult = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  return q === 0 ? [iso(y, m, 1), iso(y, m, 15)] : [iso(y, m, 16), iso(y, m, ult)];
+}
+async function pantallaReporte(desde, hasta) {
+  if (!desde) { var q = quincena(0); desde = q[0]; hasta = q[1]; }
+  encabezado('Reporte para nómina', '');
+  pintar('<p class="sub centro" style="padding-top:30px">Calculando…</p>');
+  var r = await enviar({ accion: 'reporte', desde: desde, hasta: hasta });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div><button class="b-ghost" onclick="inicio()">Volver</button>');
+  estado.reporte = r;
+  var q0 = quincena(0), q1 = quincena(-1);
+  encabezado('Reporte para nómina', fechaCorta(r.desde) + ' – ' + fechaCorta(r.hasta));
+  var filas = r.totales.map(function (t, i) {
+    return '<tr class="abre" onclick="detallePersona(' + i + ')"><td>' + esc(t.nombre) + '</td>' +
+      '<td>' + t.asistencias + '/' + t.programados + '</td>' +
+      '<td class="' + (t.faltas ? 'mal' : '') + '">' + t.faltas + '</td>' +
+      '<td class="' + (t.retardos ? 'ojo' : '') + '">' + t.retardos + (t.min_retardo ? '<br><span class="mini">' + t.min_retardo + '′</span>' : '') + '</td>' +
+      '<td class="' + (t.comidas_largas ? 'ojo' : '') + '">' + t.comidas_largas + '</td>' +
+      '<td class="' + (t.incidencias ? 'mal' : '') + '">' + t.incidencias + '</td>' +
+      '<td>' + t.horas + '</td></tr>';
+  }).join('');
+  pintar('<div class="chips">' +
+    '<button class="chip' + (r.desde === q0[0] ? ' on' : '') + '" onclick="pantallaReporte(\'' + q0[0] + '\',\'' + q0[1] + '\')">Esta quincena</button>' +
+    '<button class="chip' + (r.desde === q1[0] ? ' on' : '') + '" onclick="pantallaReporte(\'' + q1[0] + '\',\'' + q1[1] + '\')">Quincena pasada</button></div>' +
+    '<div class="dos"><div class="campo"><label>Desde</label><input type="date" id="rDesde" value="' + r.desde + '"></div>' +
+    '<div class="campo"><label>Hasta</label><input type="date" id="rHasta" value="' + r.hasta + '"></div></div>' +
+    '<button class="b-ghost" onclick="pantallaReporte($(\'rDesde\').value,$(\'rHasta\').value)">Ver este rango</button>' +
+    '<div class="espacio"></div>' +
+    '<div class="card envuelve">' + (filas ? '<table class="tabla"><thead><tr><th>Persona</th><th>Asist.</th><th>Faltas</th>' +
+      '<th>Retardos</th><th>Comida larga</th><th>Incid.</th><th>Horas</th></tr></thead><tbody>' + filas + '</tbody></table>' +
+      '<p class="mini" style="margin:10px 0 0">Toca una persona para ver día por día.</p>' :
+      '<p class="sub">Sin personal con horario en este rango.</p>') + '</div>' +
+    '<button class="b-dark" onclick="exportarCSV()">Descargar para nómina (Excel)</button>' +
+    '<button class="b-ghost" onclick="inicio()">Volver</button>');
+}
+function detallePersona(i) {
+  var r = estado.reporte, t = r.totales[i];
+  var dias = r.detalle.filter(function (d) { return d.correo === t.correo; });
+  encabezado(t.nombre, fechaCorta(r.desde) + ' – ' + fechaCorta(r.hasta));
+  pintar('<div class="tira">' + datoFijo(t.asistencias + '/' + t.programados, 'asistencias') +
+    datoFijo(t.faltas, 'faltas', t.faltas ? 'd-crit' : '') + datoFijo(t.retardos, 'retardos', t.retardos ? 'd-warn' : '') +
+    datoFijo(t.horas, 'horas') + '</div>' +
+    '<div class="card">' + dias.map(function (d, j) {
+      return '<div class="persona"><button onclick="this.parentNode.classList.toggle(\'abierto\')">' +
+        '<span class="t"><span class="n">' + esc(fechaCorta(d.fecha)) + '</span>' +
+        '<span class="c">' + esc(d.horario) + ' · ' + (d.llegada || '—') + ' → ' + (d.salida || '—') +
+        (d.min_comida != null ? ' · comida ' + d.min_comida + '′' : '') + '</span></span>' +
+        '<span style="text-align:right">' + (marcas(d.marcas.filter(function (m) { return m !== 'PRECISION_BAJA'; })) || pill(['Bien', 'p-ok'])) +
+        (d.min_trabajados != null ? '<div class="mini mono">' + hm(d.min_trabajados) + ' h</div>' : '') + '</span></button>' +
+        '<div class="det">' + (d.checadas.length ? d.checadas.map(filaChecada).join('') : '<p class="mini" style="padding-left:12px">Sin checadas.</p>') + '</div></div>';
+    }).join('') + '</div>' +
+    '<button class="b-ghost" onclick="pantallaReporte(\'' + r.desde + '\',\'' + r.hasta + '\')">Volver al reporte</button>');
+}
+function datoFijo(n, e, cls) { return '<div class="dato ' + (cls || '') + '"><span class="n">' + esc(n) + '</span><span class="e">' + e + '</span></div>'; }
+
+function exportarCSV() {
+  var r = estado.reporte;
+  function c(v) { v = v == null ? '' : String(v); return /[",\n;]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v; }
+  var L = [];
+  L.push(['RESUMEN', r.desde + ' a ' + r.hasta].join(','));
+  L.push(['Persona', 'Correo', 'Puesto', 'Días programados', 'Asistencias', 'Faltas', 'Retardos', 'Minutos de retardo',
+    'Comidas largas', 'Salidas antes', 'Sin salida', 'Días con incidencia', 'Horas trabajadas'].join(','));
+  r.totales.forEach(function (t) {
+    L.push([t.nombre, t.correo, t.puesto, t.programados, t.asistencias, t.faltas, t.retardos, t.min_retardo,
+      t.comidas_largas, t.salidas_antes, t.sin_salida, t.incidencias, t.horas].map(c).join(','));
+  });
+  L.push('');
+  L.push('DETALLE');
+  L.push(['Persona', 'Fecha', 'Horario', 'Sede', 'Llegada', 'Salida a comer', 'Regreso de comer', 'Salida',
+    'Minutos de comida', 'Horas trabajadas', 'Minutos de retardo', 'Marcas'].join(','));
+  r.detalle.forEach(function (d) {
+    L.push([d.nombre, d.fecha, d.horario, d.sede, d.llegada, d.salida_comida, d.regreso_comida, d.salida,
+      d.min_comida, d.min_trabajados != null ? hm(d.min_trabajados) : '', d.retardo_min || '',
+      d.marcas.filter(function (m) { return m !== 'PRECISION_BAJA'; }).map(function (m) { return (MARCA[m] || [m])[0]; }).join(' · ')].map(c).join(','));
+  });
+  var blob = new Blob(['﻿' + L.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'Asistencia ' + r.desde + ' a ' + r.hasta + '.csv';
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* =================================================================
+   Personal
+   ================================================================= */
+async function pantallaPersonal() {
+  encabezado('Personal', '');
+  pintar('<p class="sub centro" style="padding-top:30px">Cargando…</p>');
+  var r = await enviar({ accion: 'personal_lista' });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div>');
+  estado.personal = r;
+  var activos = r.personal.filter(function (p) { return p.activo === 'SI'; });
+  var bajas = r.personal.filter(function (p) { return p.activo !== 'SI'; });
+  function fila(p) {
+    var i = r.personal.indexOf(p);
+    var dias = DIAS.filter(function (d) { return p[d]; }).length;
+    return '<div class="lista"><div class="item item-abre" onclick="editarPersona(' + i + ')"><div class="l">' +
+      '<span>' + esc(p.puesto || p.rol) + ' · ' + (dias ? dias + ' días' : 'sin horario') + '</span>' +
+      '<div>' + esc(p.nombre) + '</div></div>' +
+      (p.rol !== 'COLABORADOR' ? pill([p.rol === 'DIRECTOR' ? 'Dirección' : 'Gerencia', 'p-info']) : '') + '</div></div>';
+  }
+  encabezado('Personal', activos.length + ' activos');
+  pintar('<button class="b-dark" onclick="editarPersona(-1)">Dar de alta a alguien</button><div class="espacio"></div>' +
+    '<div class="card">' + activos.map(fila).join('') + '</div>' +
+    (bajas.length ? '<details class="mas"><summary>Dados de baja (' + bajas.length + ')</summary><div class="card">' +
+      bajas.map(fila).join('') + '</div></details>' : '') +
+    '<button class="b-ghost" onclick="inicio()">Volver</button>');
+}
+
+function editarPersona(i) {
+  var r = estado.personal;
+  var p = i >= 0 ? r.personal[i] : { correo: '', nombre: '', puesto: '', rol: 'COLABORADOR', sede_base: (r.sedes[0] || {}).id, comida_min: '30', activo: 'SI' };
+  var nuevo = i < 0;
+  encabezado(nuevo ? 'Alta de personal' : p.nombre, 'Personal');
+  var sedes = r.sedes.map(function (s) {
+    return '<option value="' + esc(s.id) + '"' + (s.id === p.sede_base ? ' selected' : '') + '>' + esc(s.nombre) + '</option>';
+  }).join('');
+  var rol = ['COLABORADOR', 'GERENCIA', 'DIRECTOR'].map(function (x) {
+    return '<option value="' + x + '"' + (p.rol === x ? ' selected' : '') + '>' +
+      { COLABORADOR: 'Colaborador (sólo checa)', GERENCIA: 'Gerencia (ve el tablero)', DIRECTOR: 'Dirección' }[x] + '</option>';
+  }).join('');
+  pintar('<div class="card">' +
+    '<div class="campo"><label>Correo de Google</label><input id="pCorreo" type="email" value="' + esc(p.correo) + '"' + (nuevo ? '' : ' readonly') + ' placeholder="nombre@gmail.com"></div>' +
+    '<div class="campo"><label>Nombre</label><input id="pNombre" value="' + esc(p.nombre) + '"></div>' +
+    '<div class="campo"><label>Puesto</label><input id="pPuesto" value="' + esc(p.puesto) + '" placeholder="Enfermería, recepción, almacén…"></div>' +
+    '<div class="dos"><div class="campo"><label>Sede habitual</label><select id="pSede">' + sedes + '</select></div>' +
+    '<div class="campo"><label>Rol</label><select id="pRol">' + rol + '</select></div></div>' +
+    '</div>' +
+    '<div class="card"><h3>Horario</h3><p class="mini">Formato 08:00-17:00. Vacío = descanso. Un turno nocturno se escribe 20:00-08:00.</p>' +
+    '<div class="dias7">' + DIAS.map(function (d) {
+      return '<span class="d">' + DIA_LARGO[d] + '</span><input id="h_' + d + '" value="' + esc(p[d] || '') + '" placeholder="descanso" inputmode="numeric">';
+    }).join('') + '</div>' +
+    '<button class="b-ghost" onclick="copiarLunes()">Copiar el lunes a martes–viernes</button>' +
+    '<div class="campo" style="margin-top:13px"><label>Minutos de comida</label><input id="pComida" type="number" value="' + esc(p.comida_min || 30) + '"></div>' +
+    '</div>' +
+    '<div class="card"><div class="campo"><label>Notas</label><textarea id="pNotas" rows="2">' + esc(p.notas || '') + '</textarea></div>' +
+    '<label class="check"><input type="checkbox" id="pActivo"' + (p.activo !== 'NO' ? ' checked' : '') + '> Activo (puede entrar y checar)</label></div>' +
+    '<button class="b-dark" onclick="guardarPersona()">Guardar</button>' +
+    (!nuevo && p.dispositivo ? '<button class="b-ghost" onclick="liberarTel(\'' + esc(p.correo) + '\')">Liberar su teléfono (cambió de celular)</button>' : '') +
+    '<button class="b-ghost" onclick="pantallaPersonal()">Cancelar</button>');
+}
+function copiarLunes() { var v = $('h_lun').value; ['mar', 'mie', 'jue', 'vie'].forEach(function (d) { $('h_' + d).value = v; }); }
+async function guardarPersona() {
+  var x = { correo: $('pCorreo').value, nombre: $('pNombre').value, puesto: $('pPuesto').value,
+            sede_base: $('pSede').value, rol: $('pRol').value, comida_min: $('pComida').value,
+            notas: $('pNotas').value, activo: $('pActivo').checked ? 'SI' : 'NO' };
+  DIAS.forEach(function (d) { x[d] = $('h_' + d).value.replace(/\s/g, '').replace(/[–—]/g, '-'); });
+  var r = await enviar({ accion: 'personal_guardar', persona: x });
+  if (!r.ok) return alertar(r.error, 'a-err');
+  await pantallaPersonal();
+  alertar('Guardado. ' + (x.correo ? 'Ya puede entrar con ' + x.correo.toLowerCase() + ' en equipo.miguelsotomd.com' : ''), 'a-ok');
+}
+async function liberarTel(correo) {
+  var r = await enviar({ accion: 'personal_liberar_tel', correo: correo });
+  if (!r.ok) return alertar(r.error, 'a-err');
+  alertar('Listo: el siguiente teléfono con el que cheque quedará registrado.', 'a-ok');
+}
+
+/* =================================================================
+   Sedes
+   ================================================================= */
+async function pantallaSedes() {
+  encabezado('Sedes', '');
+  pintar('<p class="sub centro" style="padding-top:30px">Cargando…</p>');
+  var r = await enviar({ accion: 'sedes_lista' });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div>');
+  estado.sedes = r.sedes;
+  pintar(r.sedes.map(function (s, i) {
+    return '<div class="card"><h3>' + esc(s.nombre) + ' ' + (s.activa === 'SI' ? '' : pill(['Inactiva', 'p-neutral'])) + '</h3>' +
+      '<p class="mini">' + esc(s.direccion) + '</p>' +
+      '<p class="mini mono">' + (s.lat != null ? s.lat.toFixed(5) + ', ' + s.lng.toFixed(5) + ' · radio ' + s.radio_m + ' m' : 'Sin ubicación') + '</p>' +
+      (s.lat != null ? '<p class="mini"><a href="https://www.google.com/maps?q=' + s.lat + ',' + s.lng + '" target="_blank" rel="noopener" style="color:var(--accent-deep)">Ver el punto en el mapa</a></p>' : '') +
+      '<button class="b-ghost" onclick="editarSede(' + i + ')">Editar</button></div>';
+  }).join('') +
+    '<button class="b-dark" onclick="editarSede(-1)">Agregar sede</button>' +
+    '<button class="b-ghost" onclick="inicio()">Volver</button>');
+}
+function editarSede(i) {
+  var s = i >= 0 ? estado.sedes[i] : { id: '', nombre: '', direccion: '', radio_m: 120, activa: 'SI', lat: null, lng: null };
+  estado.sedeEdit = s;
+  encabezado(s.nombre || 'Sede nueva', 'Sedes');
+  pintar('<div class="card">' +
+    '<div class="campo"><label>Nombre</label><input id="sNombre" value="' + esc(s.nombre) + '"></div>' +
+    '<div class="campo"><label>Dirección</label><input id="sDir" value="' + esc(s.direccion) + '"></div>' +
+    '<div class="campo"><label>Radio de la zona (metros)</label><input id="sRadio" type="number" value="' + esc(s.radio_m) + '"></div>' +
+    '<p class="mini mono" id="sCoord">' + (s.lat != null ? s.lat.toFixed(6) + ', ' + s.lng.toFixed(6) : 'Sin ubicación') + '</p>' +
+    '<label class="check"><input type="checkbox" id="sActiva"' + (s.activa !== 'NO' ? ' checked' : '') + '> Activa</label></div>' +
+    '<div class="aviso a-neutral">La forma más exacta de fijar el punto: párate en la recepción de la sede y toca «Usar mi ubicación actual».</div>' +
+    '<button class="b-dark" onclick="sedeAqui()">Usar mi ubicación actual</button>' +
+    '<button class="b-ghost" onclick="guardarSede(true)">Ubicar por la dirección</button>' +
+    '<button class="b-ghost" onclick="guardarSede(false)">Guardar</button>' +
+    '<button class="b-ghost" onclick="pantallaSedes()">Cancelar</button>');
+}
+function sedeAqui() {
+  $('sCoord').textContent = 'Leyendo ubicación…';
+  navigator.geolocation.getCurrentPosition(function (p) {
+    estado.sedeEdit.lat = p.coords.latitude; estado.sedeEdit.lng = p.coords.longitude;
+    $('sCoord').textContent = p.coords.latitude.toFixed(6) + ', ' + p.coords.longitude.toFixed(6) + ' (±' + Math.round(p.coords.accuracy) + ' m)';
+    guardarSede(false);
+  }, function () { $('sCoord').textContent = 'No se pudo leer la ubicación.'; },
+  { enableHighAccuracy: true, maximumAge: 0, timeout: 20000 });
+}
+async function guardarSede(geo) {
+  var s = estado.sedeEdit;
+  var x = { id: s.id, nombre: $('sNombre').value, direccion: $('sDir').value, radio_m: $('sRadio').value,
+            activa: $('sActiva').checked ? 'SI' : 'NO', lat: s.lat, lng: s.lng, geocodificar: !!geo };
+  var r = await enviar({ accion: 'sede_guardar', sede: x });
+  if (!r.ok) return alertar(r.error, 'a-err');
+  await pantallaSedes();
+  alertar('Sede guardada.', 'a-ok');
+}
+
+/* =================================================================
+   Arranque
+   ================================================================= */
+window.addEventListener('online', pintarEstado);
+window.addEventListener('offline', pintarEstado);
+document.addEventListener('visibilitychange', function () {
+  // Al volver a la app, el checador se refresca: puede haber cambiado el turno.
+  if (document.visibilityState === 'visible' && estado.yo && !flujo && $('rH')) inicio();
+});
+if ('serviceWorker' in navigator && !/[?&]reiniciar=1/.test(location.search)) {
+  navigator.serviceWorker.register('sw.js').catch(function () {});
+}
+pintarEstado();
+inicio();
+</script>
+</body>
+</html>
