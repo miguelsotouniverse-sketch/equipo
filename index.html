@@ -727,6 +727,7 @@ function miChecador() { estado.verChecador = true; inicio(); }
 function accesosDireccion() {
   return '<div class="sub-t" style="margin-top:22px">Dirección</div>' +
     '<div class="rejilla" style="margin-top:10px">' +
+    '<button class="baldosa fuerte ancha" onclick="pantallaAjustes()">Horarios de mañana<span class="q">Mover la entrada o salida según la agenda</span></button>' +
     '<button class="baldosa" onclick="pantallaReporte()">Reporte para nómina<span class="q">Quincena, retardos, faltas</span></button>' +
     '<button class="baldosa" onclick="pantallaChecadasDia()">Checadas del día<span class="q">Con foto y ubicación</span></button>' +
     '<button class="baldosa" onclick="pantallaPersonal()">Personal<span class="q">Altas, horarios, teléfono</span></button>' +
@@ -767,7 +768,12 @@ function pantallaChecador(aviso) {
   pintar((aviso || '') +
     '<div class="reloj"><div class="h" id="rH">--:--</div>' +
     '<div class="f" id="rF"></div>' +
-    '<div class="hr">' + (r.horario_hoy ? 'Tu horario hoy: ' + esc(r.horario_hoy) : 'Hoy no tienes horario asignado') + '</div></div>' +
+    '<div class="hr">' + (r.horario_hoy ? 'Tu horario hoy: ' + esc(r.horario_hoy) + (r.hoy_ajustado ? ' · ajustado' : '') : 'Hoy no tienes horario asignado') + '</div></div>' +
+    (r.manana && r.manana.ajustado ?
+      '<div class="aviso a-warn"><b>Mañana cambia tu horario:</b> ' +
+      (r.manana.horario ? 'entras ' + esc(r.manana.horario) : 'descansas') +
+      (r.manana.motivo ? ' · ' + esc(r.manana.motivo) : '') + '</div>' :
+      (r.manana ? '<p class="mini centro" style="margin:-6px 0 12px">Mañana: ' + esc(r.manana.horario || 'descanso') + '</p>' : '')) +
     '<div class="pasos">' + pasos + '</div>' +
     botones +
     '<div class="espacio"></div>' +
@@ -1072,6 +1078,7 @@ function pintarTablero() {
     return '<div class="persona" id="per' + i + '"><button onclick="this.parentNode.classList.toggle(\'abierto\')">' +
       '<span class="t"><span class="n">' + esc(p.nombre) + '</span>' +
       '<span class="c">' + esc(p.puesto || '') + (p.detalle ? ' · ' + esc(p.detalle) : '') +
+      (p.ajustado ? ' · horario ajustado' : '') +
       (p.sede ? ' · ' + esc(p.sede) : '') + '</span></span>' +
       '<span style="text-align:right">' + pill(ESTADO[p.estado]) +
       (p.retardo_min ? '<br>' + pill(['+' + p.retardo_min + ' min', 'p-warn']) : '') +
@@ -1197,7 +1204,7 @@ function detallePersona(i) {
     '<div class="card">' + dias.map(function (d, j) {
       return '<div class="persona"><button onclick="this.parentNode.classList.toggle(\'abierto\')">' +
         '<span class="t"><span class="n">' + esc(fechaCorta(d.fecha)) + '</span>' +
-        '<span class="c">' + esc(d.horario) + ' · ' + (d.llegada || '—') + ' → ' + (d.salida || '—') +
+        '<span class="c">' + esc(d.horario) + (d.ajustado && d.horario.indexOf('ajustado') < 0 ? ' (ajustado)' : '') + ' · ' + (d.llegada || '—') + ' → ' + (d.salida || '—') +
         (d.min_comida != null ? ' · comida ' + d.min_comida + '′' : '') + '</span></span>' +
         '<span style="text-align:right">' + (marcas(d.marcas.filter(function (m) { return m !== 'PRECISION_BAJA'; })) || pill(['Bien', 'p-ok'])) +
         (d.min_trabajados != null ? '<div class="mini mono">' + hm(d.min_trabajados) + ' h</div>' : '') + '</span></button>' +
@@ -1232,6 +1239,88 @@ function exportarCSV() {
   a.href = URL.createObjectURL(blob);
   a.download = 'Asistencia ' + r.desde + ' a ' + r.hasta + '.csv';
   document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* =================================================================
+   Horarios de mañana (ajustes de la jefatura)
+   =================================================================
+   La agenda manda: un día alguien entra antes, otro después. El horario
+   base no se toca; aquí se fija el de UN día y contra ése se miden los
+   retardos. Se hace normalmente la víspera. */
+function fechaManana() {
+  var d = new Date(horaServidor().getTime() + 864e5);
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' });
+}
+function sumarMin(hhmm, delta) {
+  var p = hhmm.split(':'), m = (+p[0] * 60 + +p[1] + delta + 1440) % 1440;
+  return ('0' + Math.floor(m / 60)).slice(-2) + ':' + ('0' + (m % 60)).slice(-2);
+}
+function moverHorario(v, delta) {
+  var m = String(v).replace(/\s/g, '').match(/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/);
+  if (!m) return v;
+  return sumarMin(m[1], delta) + '-' + sumarMin(m[2], delta);
+}
+async function pantallaAjustes(fecha) {
+  fecha = fecha || fechaManana();
+  encabezado('Horarios del día', '');
+  pintar('<p class="sub centro" style="padding-top:30px">Cargando…</p>');
+  var r = await enviar({ accion: 'ajustes_dia', fecha: fecha });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div><button class="b-ghost" onclick="inicio()">Volver</button>');
+  estado.ajustes = r;
+  encabezado(r.fecha === fechaManana() ? 'Horarios de mañana' : 'Horarios del día', fechaLarga(r.fecha));
+  var filas = r.personas.map(function (p, i) {
+    var val = p.ajuste ? p.ajuste.horario : p.base;
+    var desc = p.ajuste && !p.ajuste.horario;
+    return '<div class="persona abierto" style="padding:4px 0 10px">' +
+      '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:8px 4px 6px">' +
+      '<span><span style="font-size:.95rem">' + esc(p.nombre) + '</span>' +
+      '<span class="mini mono" style="display:block">' + esc(p.puesto || '') + ' · base ' + esc(p.base || 'descanso') + '</span></span>' +
+      (p.ajuste ? pill(['Ajustado' + (p.ajuste.autor ? ' · ' + p.ajuste.autor.split(' ')[0] : ''), 'p-warn']) : '') + '</div>' +
+      '<div style="display:grid;grid-template-columns:auto 1fr auto;gap:7px;align-items:center;padding:0 4px">' +
+      '<button class="b-chico" style="background:var(--surface);color:var(--ink);border:1px solid var(--rule)" onclick="mover(' + i + ',-30)" ' + (r.editable ? '' : 'disabled') + '>−30′</button>' +
+      '<input id="aj' + i + '" value="' + esc(desc ? '' : val) + '" placeholder="descansa" inputmode="numeric" style="text-align:center;font-family:\'IBM Plex Mono\',monospace" ' + (r.editable ? '' : 'disabled') + '>' +
+      '<button class="b-chico" style="background:var(--surface);color:var(--ink);border:1px solid var(--rule)" onclick="mover(' + i + ',30)" ' + (r.editable ? '' : 'disabled') + '>+30′</button></div>' +
+      (p.ajuste ? '<p class="mini" style="margin:6px 4px 0">' + (p.ajuste.motivo ? '«' + esc(p.ajuste.motivo) + '» · ' : '') +
+        (r.editable ? '<a href="#" onclick="volverBase(' + i + ');return false" style="color:var(--accent-deep)">volver a su horario base</a>' : '') + '</p>' : '') +
+      '</div>';
+  }).join('');
+  pintar('<div class="campo"><label>Día</label><input type="date" value="' + r.fecha + '" onchange="pantallaAjustes(this.value)"></div>' +
+    (r.editable ? '' : '<div class="aviso a-neutral">Es un día pasado: se puede consultar pero no cambiar, porque cambiaría retardos que ya ocurrieron.</div>') +
+    '<div class="aviso a-neutral">Mueve sólo a quien cambia. Formato 07:00-16:00; vacío = descansa ese día. Los retardos de ese día se miden contra lo que dejes aquí.</div>' +
+    '<div class="card">' + (filas || '<p class="sub">No hay personal con horario.</p>') + '</div>' +
+    (r.editable ? '<div class="campo"><label>Motivo (opcional)</label><input id="ajMotivo" placeholder="Ej. cirugía a las 7:30, consulta extendida"></div>' +
+      '<button class="b-dark" onclick="guardarAjustes()">Guardar horarios</button>' : '') +
+    '<button class="b-ghost" onclick="inicio()">Volver</button>');
+}
+function mover(i, d) {
+  var inp = $('aj' + i), p = estado.ajustes.personas[i];
+  var v = inp.value || p.base;
+  if (!v) return alertar('Escribe primero un horario, ej. 08:00-17:00.', 'a-warn');
+  inp.value = moverHorario(v, d);
+}
+async function volverBase(i) {
+  var p = estado.ajustes.personas[i];
+  var r = await enviar({ accion: 'ajustes_guardar', fecha: estado.ajustes.fecha, cambios: [{ correo: p.correo, quitar: true }] });
+  if (!r.ok) return alertar(r.error, 'a-err');
+  await pantallaAjustes(estado.ajustes.fecha);
+  alertar(p.nombre + ' vuelve a su horario base.', 'a-ok');
+}
+async function guardarAjustes() {
+  var r = estado.ajustes, cambios = [];
+  r.personas.forEach(function (p, i) {
+    var v = $('aj' + i).value.replace(/\s/g, '').replace(/[–—]/g, '-');
+    var actual = p.ajuste ? p.ajuste.horario : p.base;
+    if (v === actual) return;
+    if (!p.ajuste && v === p.base) return;
+    if (v === p.base && p.ajuste) { cambios.push({ correo: p.correo, quitar: true }); return; }
+    cambios.push({ correo: p.correo, horario: v });
+  });
+  if (!cambios.length) return alertar('No cambiaste ningún horario.', 'a-neutral');
+  var res = await enviar({ accion: 'ajustes_guardar', fecha: r.fecha, cambios: cambios, motivo: ($('ajMotivo').value || '').trim() });
+  if (!res.ok) return alertar(res.error, 'a-err');
+  await pantallaAjustes(r.fecha);
+  alertar('Listo: ' + cambios.length + (cambios.length === 1 ? ' horario guardado' : ' horarios guardados') +
+    '. Cada quien lo verá en su checador.', 'a-ok');
 }
 
 /* =================================================================
