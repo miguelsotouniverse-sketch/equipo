@@ -526,7 +526,7 @@ var MARCA = {
   SALIDA_ANTES: ['Salió antes', 'p-warn'], SIN_SALIDA: ['Sin salida', 'p-warn'],
   FUERA_DE_ZONA: ['Fuera de zona', 'p-crit'], OTRO_TELEFONO: ['Otro teléfono', 'p-crit'],
   TELEFONO_COMPARTIDO: ['Teléfono compartido', 'p-crit'], PRECISION_BAJA: ['GPS impreciso', 'p-neutral'],
-  PENDIENTE: ['Aún no entra', 'p-neutral']
+  PENDIENTE: ['Aún no entra', 'p-neutral'], OTRA_SEDE: ['Llegó a otra sede', 'p-warn']
 };
 var ESTADO = {
   DENTRO: ['Dentro', 'p-ok'], COMIENDO: ['Comiendo', 'p-info'], COMIDA_LARGA: ['Comida larga', 'p-warn'],
@@ -768,10 +768,10 @@ function pantallaChecador(aviso) {
   pintar((aviso || '') +
     '<div class="reloj"><div class="h" id="rH">--:--</div>' +
     '<div class="f" id="rF"></div>' +
-    '<div class="hr">' + (r.horario_hoy ? 'Tu horario hoy: ' + esc(r.horario_hoy) + (r.hoy_ajustado ? ' · ajustado' : '') : 'Hoy no tienes horario asignado') + '</div></div>' +
+    '<div class="hr">' + (r.horario_hoy ? 'Tu horario hoy: ' + esc(r.horario_hoy) + (r.hoy_sede ? ' en ' + esc(r.hoy_sede) : '') + (r.hoy_ajustado ? ' · ajustado' : '') : 'Hoy no tienes horario asignado') + '</div></div>' +
     (r.manana && r.manana.ajustado ?
       '<div class="aviso a-warn"><b>Mañana cambia tu horario:</b> ' +
-      (r.manana.horario ? 'entras ' + esc(r.manana.horario) : 'descansas') +
+      (r.manana.horario ? 'entras ' + esc(r.manana.horario) + (r.manana.sede ? ' en ' + esc(r.manana.sede) : '') : 'descansas') +
       (r.manana.motivo ? ' · ' + esc(r.manana.motivo) : '') + '</div>' :
       (r.manana ? '<p class="mini centro" style="margin:-6px 0 12px">Mañana: ' + esc(r.manana.horario || 'descanso') + '</p>' : '')) +
     '<div class="pasos">' + pasos + '</div>' +
@@ -1268,8 +1268,14 @@ async function pantallaAjustes(fecha) {
   if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div><button class="b-ghost" onclick="inicio()">Volver</button>');
   estado.ajustes = r;
   encabezado(r.fecha === fechaManana() ? 'Horarios de mañana' : 'Horarios del día', fechaLarga(r.fecha));
+  function opcSedes(sel) {
+    return r.sedes.map(function (x) {
+      return '<option value="' + esc(x.id) + '"' + (x.id === sel ? ' selected' : '') + '>Llega a ' + esc(x.nombre) + '</option>';
+    }).join('');
+  }
   var filas = r.personas.map(function (p, i) {
     var val = p.ajuste ? p.ajuste.horario : p.base;
+    var sedeSel = (p.ajuste && p.ajuste.sede) || p.sede_base;
     var desc = p.ajuste && !p.ajuste.horario;
     return '<div class="persona abierto" style="padding:4px 0 10px">' +
       '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:8px 4px 6px">' +
@@ -1280,17 +1286,24 @@ async function pantallaAjustes(fecha) {
       '<button class="b-chico" style="background:var(--surface);color:var(--ink);border:1px solid var(--rule)" onclick="mover(' + i + ',-30)" ' + (r.editable ? '' : 'disabled') + '>−30′</button>' +
       '<input id="aj' + i + '" value="' + esc(desc ? '' : val) + '" placeholder="descansa" inputmode="numeric" style="text-align:center;font-family:\'IBM Plex Mono\',monospace" ' + (r.editable ? '' : 'disabled') + '>' +
       '<button class="b-chico" style="background:var(--surface);color:var(--ink);border:1px solid var(--rule)" onclick="mover(' + i + ',30)" ' + (r.editable ? '' : 'disabled') + '>+30′</button></div>' +
+      '<div style="padding:7px 4px 0"><select id="ajs' + i + '" ' + (r.editable ? '' : 'disabled') + '>' + opcSedes(sedeSel) + '</select></div>' +
       (p.ajuste ? '<p class="mini" style="margin:6px 4px 0">' + (p.ajuste.motivo ? '«' + esc(p.ajuste.motivo) + '» · ' : '') +
         (r.editable ? '<a href="#" onclick="volverBase(' + i + ');return false" style="color:var(--accent-deep)">volver a su horario base</a>' : '') + '</p>' : '') +
       '</div>';
   }).join('');
   pintar('<div class="campo"><label>Día</label><input type="date" value="' + r.fecha + '" onchange="pantallaAjustes(this.value)"></div>' +
     (r.editable ? '' : '<div class="aviso a-neutral">Es un día pasado: se puede consultar pero no cambiar, porque cambiaría retardos que ya ocurrieron.</div>') +
-    '<div class="aviso a-neutral">Mueve sólo a quien cambia. Formato 07:00-16:00; vacío = descansa ese día. Los retardos de ese día se miden contra lo que dejes aquí.</div>' +
+    '<div class="aviso a-neutral">Mueve sólo a quien cambia. Formato 07:00-16:00; vacío = descansa ese día. La sede es dónde debe <b>llegar</b>; la comida y la salida valen en cualquier sede.</div>' +
+    (r.editable && r.personas.length > 1 ? '<div class="campo"><label>Todos llegan a</label><select onchange="todosA(this.value)"><option value="">— elegir para mover a todos —</option>' +
+      r.sedes.map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.nombre) + '</option>'; }).join('') + '</select></div>' : '') +
     '<div class="card">' + (filas || '<p class="sub">No hay personal con horario.</p>') + '</div>' +
     (r.editable ? '<div class="campo"><label>Motivo (opcional)</label><input id="ajMotivo" placeholder="Ej. cirugía a las 7:30, consulta extendida"></div>' +
       '<button class="b-dark" onclick="guardarAjustes()">Guardar horarios</button>' : '') +
     '<button class="b-ghost" onclick="inicio()">Volver</button>');
+}
+function todosA(id) {
+  if (!id) return;
+  estado.ajustes.personas.forEach(function (p, i) { if ($('ajs' + i)) $('ajs' + i).value = id; });
 }
 function mover(i, d) {
   var inp = $('aj' + i), p = estado.ajustes.personas[i];
@@ -1309,11 +1322,15 @@ async function guardarAjustes() {
   var r = estado.ajustes, cambios = [];
   r.personas.forEach(function (p, i) {
     var v = $('aj' + i).value.replace(/\s/g, '').replace(/[–—]/g, '-');
-    var actual = p.ajuste ? p.ajuste.horario : p.base;
-    if (v === actual) return;
-    if (!p.ajuste && v === p.base) return;
-    if (v === p.base && p.ajuste) { cambios.push({ correo: p.correo, quitar: true }); return; }
-    cambios.push({ correo: p.correo, horario: v });
+    var sd = $('ajs' + i).value;
+    var actualH = p.ajuste ? p.ajuste.horario : p.base;
+    var actualS = (p.ajuste && p.ajuste.sede) || p.sede_base;
+    if (v === actualH && sd === actualS) return;                 // sin cambio
+    if (v === p.base && sd === p.sede_base) {                    // regresa a lo de siempre
+      if (p.ajuste) cambios.push({ correo: p.correo, quitar: true });
+      return;
+    }
+    cambios.push({ correo: p.correo, horario: v, sede: sd });
   });
   if (!cambios.length) return alertar('No cambiaste ningún horario.', 'a-neutral');
   var res = await enviar({ accion: 'ajustes_guardar', fecha: r.fecha, cambios: cambios, motivo: ($('ajMotivo').value || '').trim() });
