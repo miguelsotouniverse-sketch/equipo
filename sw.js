@@ -1,7 +1,7 @@
 /* Service worker — cachea el armazón de la app para que abra sin señal.
    Los datos NUNCA se cachean: siempre van al gateway o a la cola local. */
 
-var CACHE = 'msu-equipo-v7';
+var CACHE = 'msu-equipo-v8';
 var FAMILIA = 'msu-equipo-';
 var ARCHIVOS = ['./', './index.html', './manifest.json'];
 /* Imprimir etiquetas y hojas de caja tiene que servir sin señal: se hace en
@@ -65,4 +65,63 @@ self.addEventListener('fetch', function (e) {
       })
       .catch(function () { return caches.match(e.request); })
   );
+});
+
+/* =================================================================
+   Notificaciones push
+   =================================================================
+   El aviso llega vacío; aquí se le pregunta al backend qué hay de nuevo
+   con la sesión que la app dejó guardada, y se muestra. Si no se puede
+   preguntar (sin señal, sesión vencida), se muestra un aviso genérico:
+   el navegador exige mostrar algo por cada push. */
+var DATOS = 'msu-eqdatos';
+function leerDato(k) {
+  return caches.open(DATOS).then(function (c) { return c.match('/__' + k); })
+    .then(function (r) { return r ? r.json() : null; }).catch(function () { return null; });
+}
+function guardarDato(k, v) {
+  return caches.open(DATOS).then(function (c) { return c.put('/__' + k, new Response(JSON.stringify(v))); });
+}
+var VIBRA = [500, 200, 500, 200, 900];
+function generico() {
+  return self.registration.showNotification('Equipo · MS Universe', {
+    body: 'Tienes algo nuevo. Abre la app para verlo.', tag: 'generico', renotify: true,
+    requireInteraction: true, icon: 'icono-192.png', badge: 'icono-192.png', vibrate: VIBRA, data: { ver: 'inicio' } });
+}
+function mostrarPendientes() {
+  return Promise.all([leerDato('sesion'), leerDato('ultimo')]).then(function (x) {
+    var s = x[0], desde = x[1];
+    if (!s || !s.sesion || !s.gateway) return generico();
+    return fetch(s.gateway, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({ accion: 'push_pendientes', sesion: s.sesion, desde: desde }) })
+      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (!r || !r.ok || !r.notifs || !r.notifs.length) return generico();
+        return guardarDato('ultimo', r.notifs[r.notifs.length - 1].ts).then(function () {
+          return Promise.all(r.notifs.map(function (n) {
+            return self.registration.showNotification(n.titulo, {
+              body: n.cuerpo, tag: n.id, renotify: true, requireInteraction: true,
+              icon: 'icono-192.png', badge: 'icono-192.png', vibrate: VIBRA, timestamp: Date.parse(n.ts),
+              data: { ver: n.ver } });
+          }));
+        }).then(function () {
+          return self.clients.matchAll({ type: 'window' }).then(function (cs) {
+            cs.forEach(function (c) { c.postMessage({ tipo: 'nuevo' }); });
+          });
+        });
+      })
+      .catch(function () { return generico(); });
+  });
+}
+self.addEventListener('push', function (e) { e.waitUntil(mostrarPendientes()); });
+
+self.addEventListener('notificationclick', function (e) {
+  e.notification.close();
+  var ver = (e.notification.data || {}).ver || 'inicio';
+  e.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(function (cs) {
+    for (var i = 0; i < cs.length; i++) {
+      if ('focus' in cs[i]) { cs[i].postMessage({ tipo: 'ver', ver: ver }); return cs[i].focus(); }
+    }
+    return self.clients.openWindow('./?ver=' + encodeURIComponent(ver));
+  }));
 });

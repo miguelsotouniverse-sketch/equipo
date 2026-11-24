@@ -650,6 +650,7 @@ var MOTIVOS_SESION = {
 function cerrarSesion(msg) {
   estado.sesion = null; estado.yo = null;
   escribir(SES_KEY, null);
+  datoSW('sesion', null);
   pantallaLogin(msg);
 }
 
@@ -724,6 +725,7 @@ async function inicio(aviso) {
   }
   if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div><button class="b-dark" onclick="inicio()">Reintentar</button>');
   estado.yo = r;
+  datoSW('sesion', { sesion: estado.sesion.sesion, gateway: GATEWAY });
   estado.desfase = new Date(r.servidor.ts).getTime() - Date.now();
   /* Dirección sin horario no checa: su portada es el tablero, no el reloj.
      Si algún día le ponen horario, ve el checador con sus accesos abajo. */
@@ -813,6 +815,12 @@ function minDesde(a, b) {
 }
 
 async function salir() {
+  // Este teléfono deja de recibir avisos de esta cuenta.
+  try {
+    var reg = await navigator.serviceWorker.getRegistration();
+    var sub = reg && await reg.pushManager.getSubscription();
+    if (sub) { await enviar({ accion: 'push_baja', endpoint: sub.endpoint }); await sub.unsubscribe(); }
+  } catch (e) {}
   try { await enviar({ accion: 'salir' }); } catch (e) {}
   cerrarSesion();
 }
@@ -1536,6 +1544,7 @@ async function portada(aviso) {
   estado.resumen = s;
   var p = r.perfil;
   encabezado('Equipo', p.nombre);
+  var push = tarjetaPush(await estadoPush());
 
   var hoy = '';
   if (chequeaSiHoy()) {
@@ -1610,7 +1619,7 @@ async function portada(aviso) {
       '</div>';
   }
 
-  pintar((aviso || '') + hoy + manana + equipo + mis + dir +
+  pintar((aviso || '') + push + hoy + manana + equipo + mis + dir +
     '<p class="mini centro" style="margin-top:26px">' + esc(p.correo) + (p.admin ? ' · ' + (p.rol === 'DIRECTOR' ? 'Dirección' : 'Gerencia') : '') +
     ' · <a href="#" onclick="salir();return false" style="color:var(--ink-3)">Salir</a></p>');
 
@@ -1661,6 +1670,96 @@ function ponerTitulo(s) {
   var n = (s.mensajes_sin_leer || 0) + (s.avisos_sin_leer || 0) + (s.actas_pendientes || 0);
   document.title = (n ? '(' + n + ') ' : '') + 'Equipo · MS Universe';
 }
+/* ---------- notificaciones push ---------- */
+function datoSW(k, v) {
+  try {
+    if (!window.caches) return;
+    caches.open('msu-eqdatos').then(function (c) {
+      return v == null ? c.delete('/__' + k) : c.put('/__' + k, new Response(JSON.stringify(v)));
+    }).catch(function () {});
+  } catch (e) {}
+}
+function esIOS() { return /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); }
+function instalada() { return navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches); }
+function b64aU8(b) {
+  b = b.replace(/-/g, '+').replace(/_/g, '/'); while (b.length % 4) b += '=';
+  var s = atob(b), u = new Uint8Array(s.length);
+  for (var i = 0; i < s.length; i++) u[i] = s.charCodeAt(i);
+  return u;
+}
+async function estadoPush() {
+  try {
+    if (esIOS() && !instalada()) return 'ios-instalar';
+    if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return 'nosoporta';
+    if (Notification.permission === 'denied') return 'denegado';
+    var reg = await navigator.serviceWorker.getRegistration();
+    var sub = reg && await reg.pushManager.getSubscription();
+    if (Notification.permission === 'granted' && sub) {
+      if (!estado.pushSincronizado) {           // una vez por sesión: que el backend la tenga al día
+        estado.pushSincronizado = true;
+        enviar({ accion: 'push_suscribir', sub: sub.toJSON(), ua: navigator.userAgent }).catch(function () {});
+      }
+      return 'activo';
+    }
+    return 'inactivo';
+  } catch (e) { return 'nosoporta'; }
+}
+function tarjetaPush(st) {
+  if (st === 'inactivo') return '<div class="aviso a-warn"><b>Activa las notificaciones</b> para que te suene el teléfono ' +
+    'cuando te asignen una tarea, te llegue un aviso o un mensaje, aunque la app esté cerrada.' +
+    '<button class="b-dark" style="margin-top:10px" onclick="activarPush()">Activar notificaciones</button></div>';
+  if (st === 'ios-instalar') return '<div class="aviso a-warn"><b>Para que te suenen los avisos en iPhone</b> hay que instalar la app: ' +
+    'abre esta página en <b>Safari</b>, toca el botón <b>Compartir</b> (el cuadro con la flecha) → <b>Agregar a pantalla de inicio</b>. ' +
+    'Luego ábrela desde el ícono «Equipo» y aquí te aparecerá el botón para activar las notificaciones.</div>';
+  if (st === 'denegado') return '<div class="aviso a-err"><b>Las notificaciones están bloqueadas</b> en este teléfono. ' +
+    (esIOS() ? 'Ve a Ajustes → Notificaciones → Equipo y actívalas.' :
+      'Toca el candado junto a la dirección (o Ajustes del teléfono → Apps → Equipo / Chrome → Notificaciones) y permítelas.') + '</div>';
+  return '';
+}
+async function activarPush() {
+  try {
+    // El permiso se pide de inmediato, dentro del toque: Safari lo exige así.
+    var perm = await Notification.requestPermission();
+    if (perm !== 'granted') { portada(); return; }
+    var reg = await navigator.serviceWorker.ready;
+    var k = await enviar({ accion: 'push_clave' });
+    if (!k.ok) return alertar(k.error, 'a-err');
+    var clave = b64aU8(k.clave);
+    var sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      var actual = sub.options && sub.options.applicationServerKey ? new Uint8Array(sub.options.applicationServerKey) : null;
+      if (!actual || actual.join() !== clave.join()) { await sub.unsubscribe(); sub = null; }
+    }
+    if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: clave });
+    datoSW('sesion', { sesion: estado.sesion.sesion, gateway: GATEWAY });
+    datoSW('ultimo', new Date().toISOString());
+    var r = await enviar({ accion: 'push_suscribir', sub: sub.toJSON(), ua: navigator.userAgent });
+    if (!r.ok) return alertar(r.error, 'a-err');
+    estado.pushSincronizado = true;
+    await portada();
+    alertar('Listo. En unos segundos te llega una notificación de prueba.', 'a-ok');
+    enviar({ accion: 'push_prueba' }).catch(function () {});
+  } catch (e) {
+    alertar('No se pudieron activar: ' + (e && e.message || e), 'a-err');
+  }
+}
+function irA(ver) {
+  ver = String(ver || 'inicio');
+  if (ver === 'tareas') return pantallaTareas();
+  if (ver === 'avisos') return pantallaAvisos();
+  if (ver === 'actas') return pantallaActasMias();
+  if (ver === 'chat:general') return pantallaCanal('general', 'Equipo · todos');
+  if (ver.indexOf('chat:') === 0) return pantallaChat();
+  return inicio();
+}
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', function (ev) {
+    var d = ev.data || {};
+    if (d.tipo === 'ver' && estado.yo) irA(d.ver);
+    if (d.tipo === 'nuevo' && document.visibilityState === 'visible') sonar();
+  });
+}
+
 function datoIr(n, e, cls, fn) {
   return '<button class="dato ' + (cls || '') + '" onclick="' + fn + '"><span class="n">' + n + '</span><span class="e">' + e + '</span></button>';
 }
@@ -2133,7 +2232,15 @@ if ('serviceWorker' in navigator && !/[?&]reiniciar=1/.test(location.search)) {
   navigator.serviceWorker.register('sw.js').catch(function () {});
 }
 pintarEstado();
-inicio();
+(function () {
+  // Al abrir desde una notificación: ir directo a lo que avisaba.
+  var m = /[?&]ver=([^&]+)/.exec(location.search);
+  var ver = m ? decodeURIComponent(m[1]) : null;
+  if (ver) history.replaceState(null, '', location.pathname);
+  Promise.resolve(inicio()).then(function () {
+    if (ver && estado.yo && estado.yo.perfil.aviso_aceptado !== false) irA(ver);
+  });
+})();
 </script>
 </body>
 </html>
