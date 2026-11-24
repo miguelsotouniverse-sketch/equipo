@@ -534,7 +534,10 @@ var MARCA = {
   SALIDA_ANTES: ['Salió antes', 'p-warn'], SIN_SALIDA: ['Sin salida', 'p-warn'],
   FUERA_DE_ZONA: ['Fuera de zona', 'p-crit'], OTRO_TELEFONO: ['Otro teléfono', 'p-crit'],
   TELEFONO_COMPARTIDO: ['Teléfono compartido', 'p-crit'], PRECISION_BAJA: ['GPS impreciso', 'p-neutral'],
-  PENDIENTE: ['Aún no entra', 'p-neutral'], OTRA_SEDE: ['Llegó a otra sede', 'p-warn']
+  PENDIENTE: ['Aún no entra', 'p-neutral'], OTRA_SEDE: ['Llegó a otra sede', 'p-warn'],
+  EXTRA_TRIPLE: ['Extra al triple', 'p-warn'], JORNADA_MAS_12H: ['Más de 12 h', 'p-crit'],
+  EXTRA_MAS_4H: ['Más de 4 h extra', 'p-crit'], EXTRA_MAS_4_DIAS: ['Extra más de 4 días', 'p-crit'],
+  EXTRA_SOBRE_TOPE: ['Sobre el tope legal', 'p-crit']
 };
 var ESTADO = {
   DENTRO: ['Dentro', 'p-ok'], COMIENDO: ['Comiendo', 'p-info'], COMIDA_LARGA: ['Comida larga', 'p-warn'],
@@ -1177,7 +1180,10 @@ async function pantallaReporte(desde, hasta) {
       '<td class="' + (t.retardos ? 'ojo' : '') + '">' + t.retardos + (t.min_retardo ? '<br><span class="mini">' + t.min_retardo + '′</span>' : '') + '</td>' +
       '<td class="' + (t.comidas_largas ? 'ojo' : '') + '">' + t.comidas_largas + '</td>' +
       '<td class="' + (t.incidencias ? 'mal' : '') + '">' + t.incidencias + '</td>' +
-      '<td>' + t.horas + '</td></tr>';
+      '<td>' + t.horas + '</td>' +
+      '<td class="' + (t.extra_doble ? 'ojo' : '') + '">' + (t.extra_doble ? t.horas_doble : '—') + '</td>' +
+      '<td class="' + (t.extra_triple ? 'ojo' : '') + '">' + (t.extra_triple ? t.horas_triple : '—') + '</td>' +
+      '<td class="' + (t.alertas_ley ? 'mal' : '') + '">' + (t.alertas_ley || '—') + '</td></tr>';
   }).join('');
   pintar('<div class="chips">' +
     '<button class="chip' + (r.desde === q0[0] ? ' on' : '') + '" onclick="pantallaReporte(\'' + q0[0] + '\',\'' + q0[1] + '\')">Esta quincena</button>' +
@@ -1187,8 +1193,10 @@ async function pantallaReporte(desde, hasta) {
     '<button class="b-ghost" onclick="pantallaReporte($(\'rDesde\').value,$(\'rHasta\').value)">Ver este rango</button>' +
     '<div class="espacio"></div>' +
     '<div class="card envuelve">' + (filas ? '<table class="tabla"><thead><tr><th>Persona</th><th>Asist.</th><th>Faltas</th>' +
-      '<th>Retardos</th><th>Comida larga</th><th>Incid.</th><th>Horas</th></tr></thead><tbody>' + filas + '</tbody></table>' +
-      '<p class="mini" style="margin:10px 0 0">Toca una persona para ver día por día.</p>' :
+      '<th>Retardos</th><th>Comida larga</th><th>Incid.</th><th>Horas</th><th>Extra 2×</th><th>Extra 3×</th><th>Alertas ley</th></tr></thead><tbody>' + filas + '</tbody></table>' +
+      '<p class="mini" style="margin:10px 0 0">Toca una persona para ver día por día. Tiempo extra: lo trabajado por encima de la jornada ' +
+      (r.ley && r.ley.base === 'LEGAL' ? 'legal de 8 h' : 'programada de cada día') + '. Las primeras ' + (r.ley ? r.ley.tope_doble_h : 9) +
+      ' h de la semana se pagan al doble y hasta 4 h más al triple; lo que pase de ahí está fuera de la ley.</p>' :
       '<p class="sub">Sin personal con horario en este rango.</p>') + '</div>' +
     '<button class="b-dark" onclick="exportarCSV()">Descargar para nómina (Excel)</button>' +
     '<button class="b-ghost" onclick="inicio()">Volver</button>');
@@ -1199,15 +1207,21 @@ function detallePersona(i) {
   encabezado(t.nombre, fechaCorta(r.desde) + ' – ' + fechaCorta(r.hasta));
   pintar('<div class="tira">' + datoFijo(t.asistencias + '/' + t.programados, 'asistencias') +
     datoFijo(t.faltas, 'faltas', t.faltas ? 'd-crit' : '') + datoFijo(t.retardos, 'retardos', t.retardos ? 'd-warn' : '') +
-    datoFijo(t.horas, 'horas') + '</div>' +
+    datoFijo(t.horas, 'horas') +
+    (t.min_extra ? datoFijo(t.horas_extra, 'tiempo extra (' + t.horas_doble + ' doble · ' + t.horas_triple + ' triple)', t.extra_exceso ? 'd-crit' : 'd-warn') : '') +
+    (t.alertas_ley ? datoFijo(t.alertas_ley, 'días con alerta legal', 'd-crit') : '') + '</div>' +
     '<div class="card">' + dias.map(function (d, j) {
       return '<div class="persona"><button onclick="this.parentNode.classList.toggle(\'abierto\')">' +
         '<span class="t"><span class="n">' + esc(fechaCorta(d.fecha)) + '</span>' +
         '<span class="c">' + esc(d.horario) + (d.ajustado && d.horario.indexOf('ajustado') < 0 ? ' (ajustado)' : '') + ' · ' + (d.llegada || '—') + ' → ' + (d.salida || '—') +
         (d.min_comida != null ? ' · comida ' + d.min_comida + '′' : '') + '</span></span>' +
         '<span style="text-align:right">' + (marcas(d.marcas.filter(function (m) { return m !== 'PRECISION_BAJA'; })) || pill(['Bien', 'p-ok'])) +
-        (d.min_trabajados != null ? '<div class="mini mono">' + hm(d.min_trabajados) + ' h</div>' : '') + '</span></button>' +
-        '<div class="det">' + (d.checadas.length ? d.checadas.map(filaChecada).join('') : '<p class="mini" style="padding-left:12px">Sin checadas.</p>') + '</div></div>';
+        (d.min_trabajados != null ? '<div class="mini mono">' + hm(d.min_trabajados) + ' h' +
+          (d.min_extra ? ' · <span style="color:var(--warn)">+' + hm(d.min_extra) + ' extra</span>' : '') + '</div>' : '') + '</span></button>' +
+        '<div class="det">' + (d.min_extra ? '<p class="mini" style="padding-left:12px">Tiempo extra: ' + hm(d.extra_doble) + ' al doble · ' +
+          hm(d.extra_triple) + ' al triple' + (d.extra_exceso ? ' · <b style="color:var(--crit)">' + hm(d.extra_exceso) + ' fuera de la ley</b>' : '') +
+          ' (programadas ' + hm(d.min_programados) + ')</p>' : '') +
+        (d.checadas.length ? d.checadas.map(filaChecada).join('') : '<p class="mini" style="padding-left:12px">Sin checadas.</p>') + '</div></div>';
     }).join('') + '</div>' +
     '<button class="b-ghost" onclick="pantallaReporte(\'' + r.desde + '\',\'' + r.hasta + '\')">Volver al reporte</button>');
 }
@@ -1219,18 +1233,23 @@ function exportarCSV() {
   var L = [];
   L.push(['RESUMEN', r.desde + ' a ' + r.hasta].join(','));
   L.push(['Persona', 'Correo', 'Puesto', 'Días programados', 'Asistencias', 'Faltas', 'Retardos', 'Minutos de retardo',
-    'Comidas largas', 'Salidas antes', 'Sin salida', 'Días con incidencia', 'Horas trabajadas'].join(','));
+    'Comidas largas', 'Salidas antes', 'Sin salida', 'Días con incidencia', 'Horas trabajadas',
+    'Horas extra total', 'Horas extra al doble', 'Horas extra al triple', 'Horas extra fuera de la ley', 'Días con alerta legal'].join(','));
   r.totales.forEach(function (t) {
     L.push([t.nombre, t.correo, t.puesto, t.programados, t.asistencias, t.faltas, t.retardos, t.min_retardo,
-      t.comidas_largas, t.salidas_antes, t.sin_salida, t.incidencias, t.horas].map(c).join(','));
+      t.comidas_largas, t.salidas_antes, t.sin_salida, t.incidencias, t.horas,
+      t.horas_extra, t.horas_doble, t.horas_triple, t.horas_exceso, t.alertas_ley].map(c).join(','));
   });
   L.push('');
   L.push('DETALLE');
   L.push(['Persona', 'Fecha', 'Horario', 'Sede', 'Llegada', 'Salida a comer', 'Regreso de comer', 'Salida',
-    'Minutos de comida', 'Horas trabajadas', 'Minutos de retardo', 'Marcas'].join(','));
+    'Minutos de comida', 'Horas trabajadas', 'Horas programadas', 'Extra total', 'Extra al doble', 'Extra al triple', 'Extra fuera de la ley',
+    'Minutos de retardo', 'Marcas'].join(','));
   r.detalle.forEach(function (d) {
     L.push([d.nombre, d.fecha, d.horario, d.sede, d.llegada, d.salida_comida, d.regreso_comida, d.salida,
-      d.min_comida, d.min_trabajados != null ? hm(d.min_trabajados) : '', d.retardo_min || '',
+      d.min_comida, d.min_trabajados != null ? hm(d.min_trabajados) : '', hm(d.min_programados || 0),
+      d.min_extra ? hm(d.min_extra) : '', d.extra_doble ? hm(d.extra_doble) : '', d.extra_triple ? hm(d.extra_triple) : '',
+      d.extra_exceso ? hm(d.extra_exceso) : '', d.retardo_min || '',
       d.marcas.filter(function (m) { return m !== 'PRECISION_BAJA'; }).map(function (m) { return (MARCA[m] || [m])[0]; }).join(' · ')].map(c).join(','));
   });
   var blob = new Blob(['﻿' + L.join('\r\n')], { type: 'text/csv;charset=utf-8' });
@@ -1267,6 +1286,11 @@ async function pantallaAjustes(fecha) {
   if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div><button class="b-ghost" onclick="inicio()">Volver</button>');
   estado.ajustes = r;
   encabezado(r.fecha === fechaManana() ? 'Horarios de mañana' : 'Horarios del día', fechaLarga(r.fecha));
+  var estadoPub = r.publicado ?
+    '<div class="aviso a-ok">✓ Publicado por ' + esc(r.publicado.autor) + ' · ' + esc(fechaHora(r.publicado.ts)) +
+      '. Si cambias a alguien, le llega un correo con su nuevo horario.</div>' :
+    '<div class="aviso a-warn"><b>Sin publicar.</b> Revisa el horario de cada quien y toca «Publicar horarios»: ' +
+      'a cada persona le llega su horario por correo y lo ve en su app.</div>';
   function opcSedes(sel) {
     return r.sedes.map(function (x) {
       return '<option value="' + esc(x.id) + '"' + (x.id === sel ? ' selected' : '') + '>Llega a ' + esc(x.nombre) + '</option>';
@@ -1279,7 +1303,9 @@ async function pantallaAjustes(fecha) {
     return '<div class="persona abierto" style="padding:4px 0 10px">' +
       '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:8px 4px 6px">' +
       '<span><span style="font-size:.95rem">' + esc(p.nombre) + '</span>' +
-      '<span class="mini mono" style="display:block">' + esc(p.puesto || '') + ' · base ' + esc(p.base || 'descanso') + '</span></span>' +
+      '<span class="mini mono" style="display:block">' + esc(p.puesto || '') + ' · base ' + esc(p.base || 'descanso') + '</span>' +
+      '<span class="mini mono" style="display:block;color:' + (p.semana_min > r.semana_max_min ? 'var(--crit)' : 'var(--ink-3)') + '">Semana: ' +
+        hm(p.semana_min) + ' de ' + hm(r.semana_max_min) + ' h' + (p.semana_min > r.semana_max_min ? ' · se pasa del máximo' : '') + '</span></span>' +
       (p.ajuste ? pill(['Ajustado' + (p.ajuste.autor ? ' · ' + p.ajuste.autor.split(' ')[0] : ''), 'p-warn']) : '') + '</div>' +
       '<div style="display:grid;grid-template-columns:auto 1fr auto;gap:7px;align-items:center;padding:0 4px">' +
       '<button class="b-chico" style="background:var(--surface);color:var(--ink);border:1px solid var(--rule)" onclick="mover(' + i + ',-30)" ' + (r.editable ? '' : 'disabled') + '>−30′</button>' +
@@ -1291,13 +1317,15 @@ async function pantallaAjustes(fecha) {
       '</div>';
   }).join('');
   pintar('<div class="campo"><label>Día</label><input type="date" value="' + r.fecha + '" onchange="pantallaAjustes(this.value)"></div>' +
+    (r.editable ? estadoPub : '') +
     (r.editable ? '' : '<div class="aviso a-neutral">Es un día pasado: se puede consultar pero no cambiar, porque cambiaría retardos que ya ocurrieron.</div>') +
     '<div class="aviso a-neutral">Mueve sólo a quien cambia. Formato 07:00-16:00; vacío = descansa ese día. La sede es dónde debe <b>llegar</b>; la comida y la salida valen en cualquier sede.</div>' +
     (r.editable && r.personas.length > 1 ? '<div class="campo"><label>Todos llegan a</label><select onchange="todosA(this.value)"><option value="">— elegir para mover a todos —</option>' +
       r.sedes.map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.nombre) + '</option>'; }).join('') + '</select></div>' : '') +
     '<div class="card">' + (filas || '<p class="sub">No hay personal con horario.</p>') + '</div>' +
     (r.editable ? '<div class="campo"><label>Motivo (opcional)</label><input id="ajMotivo" placeholder="Ej. cirugía a las 7:30, consulta extendida"></div>' +
-      '<button class="b-dark" onclick="guardarAjustes()">Guardar horarios</button>' : '') +
+      (r.publicado ? '<button class="b-dark" onclick="guardarAjustes(false)">Guardar cambios</button>' :
+        '<button class="b-dark" onclick="guardarAjustes(true)">Publicar horarios</button>') : '') +
     '<button class="b-ghost" onclick="inicio()">Volver</button>');
 }
 function todosA(id) {
@@ -1317,7 +1345,7 @@ async function volverBase(i) {
   await pantallaAjustes(estado.ajustes.fecha);
   alertar(p.nombre + ' vuelve a su horario base.', 'a-ok');
 }
-async function guardarAjustes() {
+async function guardarAjustes(publicar) {
   var r = estado.ajustes, cambios = [];
   r.personas.forEach(function (p, i) {
     var v = $('aj' + i).value.replace(/\s/g, '').replace(/[–—]/g, '-');
@@ -1331,12 +1359,18 @@ async function guardarAjustes() {
     }
     cambios.push({ correo: p.correo, horario: v, sede: sd });
   });
-  if (!cambios.length) return alertar('No cambiaste ningún horario.', 'a-neutral');
-  var res = await enviar({ accion: 'ajustes_guardar', fecha: r.fecha, cambios: cambios, motivo: ($('ajMotivo').value || '').trim() });
+  if (!cambios.length && !publicar) return alertar('No cambiaste ningún horario.', 'a-neutral');
+  var res = await enviar({ accion: 'ajustes_guardar', fecha: r.fecha, cambios: cambios, motivo: ($('ajMotivo').value || '').trim(), publicar: !!publicar });
   if (!res.ok) return alertar(res.error, 'a-err');
   await pantallaAjustes(r.fecha);
-  alertar('Listo: ' + cambios.length + (cambios.length === 1 ? ' horario guardado' : ' horarios guardados') +
-    '. Cada quien lo verá en su checador.', 'a-ok');
+  var msg = publicar ? 'Horarios publicados. ' + res.correos + (res.correos === 1 ? ' persona recibió' : ' personas recibieron') + ' su horario por correo.' :
+    'Listo: ' + cambios.length + (cambios.length === 1 ? ' cambio guardado' : ' cambios guardados') + (res.correos ? ' y avisado por correo.' : '.');
+  if (res.avisos && res.avisos.length) {
+    var d = document.createElement('div'); d.className = 'aviso a-warn';
+    d.innerHTML = '<b>Revisa antes de que llegue el día:</b><br>' + res.avisos.map(esc).join('<br>');
+    $('app').prepend(d);
+  }
+  alertar(msg, 'a-ok');
 }
 
 /* =================================================================
@@ -1514,10 +1548,14 @@ async function portada(aviso) {
     hoy = '<div class="aviso a-neutral">Hoy no tienes horario. ' +
       '<a href="#" onclick="pantallaChecador();return false" style="color:inherit">Abrir checador</a></div>';
   }
-  var manana = (r.manana && r.manana.ajustado) ?
-    '<div class="aviso a-warn"><b>Mañana cambia tu horario:</b> ' +
-    (r.manana.horario ? 'entras ' + esc(r.manana.horario) + (r.manana.sede ? ' en ' + esc(r.manana.sede) : '') : 'descansas') +
-    (r.manana.motivo ? ' · ' + esc(r.manana.motivo) : '') + '</div>' : '';
+  var manana = '';
+  if (r.manana && !p.admin || (r.manana && r.manana.ajustado)) {
+    var mt = r.manana.horario ? 'entras ' + esc(r.manana.horario) + (r.manana.sede ? ' en ' + esc(r.manana.sede) : '') : 'descansas';
+    manana = r.manana.ajustado ?
+      '<div class="aviso a-warn"><b>Mañana cambia tu horario:</b> ' + mt + (r.manana.motivo ? ' · ' + esc(r.manana.motivo) : '') + '</div>' :
+      (r.manana.publicado ? '<div class="aviso a-ok"><b>Mañana:</b> ' + mt + ' · confirmado</div>' :
+        '<p class="mini centro" style="margin:-6px 0 12px">Mañana: ' + mt + ' · por confirmar</p>');
+  }
 
   var equipo = '';
   if (p.admin && s.equipo) {
@@ -1527,7 +1565,10 @@ async function portada(aviso) {
       datoIr(e.no_llega, 'no han llegado', e.no_llega ? 'd-crit' : '', 'pantallaTablero()') +
       datoIr(e.retardos, 'retardos', e.retardos ? 'd-warn' : '', 'pantallaTablero()') +
       datoIr(e.tareas_vencidas, 'tareas vencidas', e.tareas_vencidas ? 'd-crit' : '', 'pantallaTareasEquipo()') +
-      '</div>';
+      (e.alertas_ley_semana ? datoIr(e.alertas_ley_semana, 'alertas de jornada esta semana', 'd-crit', 'pantallaReporte()') : '') +
+      '</div>' +
+      (e.manana_publicado ? '' : '<div class="aviso a-warn" style="cursor:pointer" onclick="pantallaAjustes()">' +
+        '<b>Horarios de mañana sin publicar.</b> Tócalo para revisarlos y publicarlos.</div>');
   }
 
   var mis = '<div class="rejilla">' +
@@ -1550,7 +1591,8 @@ async function portada(aviso) {
       '<button class="baldosa fuerte ancha" onclick="pantallaTablero()">Tablero del equipo<span class="q">Quién está, quién no llegó, retardos</span></button>' +
       '<button class="baldosa" onclick="pantallaTareasEquipo()">Tareas del equipo' + badge(s.equipo && s.equipo.tareas_vencidas) +
         '<span class="q">Asignar y dar seguimiento</span></button>' +
-      '<button class="baldosa" onclick="pantallaAjustes()">Horarios de mañana<span class="q">Hora y sede de llegada</span></button>' +
+      '<button class="baldosa' + (s.equipo && !s.equipo.manana_publicado ? ' urge' : '') + '" onclick="pantallaAjustes()">Horarios de mañana' +
+        (s.equipo && !s.equipo.manana_publicado ? badge('Sin publicar', 'p-warn') : '') + '<span class="q">Hora y sede de llegada</span></button>' +
       '<button class="baldosa" onclick="pantallaAvisosAdmin()">Publicar aviso<span class="q">Con acuse de lectura</span></button>' +
       '<button class="baldosa" onclick="pantallaActasAdmin()">Actas administrativas' + badge(s.equipo && s.equipo.actas_abiertas, 'p-warn') +
         '<span class="q">Registro y seguimiento</span></button>' +
@@ -1573,15 +1615,44 @@ async function portada(aviso) {
     tic(); estado.reloj = setInterval(tic, 5000);
   }
   // Los números de la portada se refrescan solos mientras está abierta.
+  ponerTitulo(s);
   POLL.portada = setInterval(function () {
     if (!$('app') || document.visibilityState !== 'visible') return;
     enviar({ accion: 'resumen' }).then(function (n) {
       if (!n || !n.ok) return;
       var o = estado.resumen || {};
+      if (n.mensajes_sin_leer > (o.mensajes_sin_leer || 0) || n.tareas > (o.tareas || 0) ||
+          n.avisos_sin_leer > (o.avisos_sin_leer || 0) || n.actas_pendientes > (o.actas_pendientes || 0)) sonar();
       if (n.mensajes_sin_leer !== o.mensajes_sin_leer || n.tareas !== o.tareas || n.avisos_sin_leer !== o.avisos_sin_leer ||
           n.actas_pendientes !== o.actas_pendientes) inicio();
     }).catch(function () {});
-  }, 60000);
+  }, 30000);
+}
+/* Alerta dentro de la app: un tono corto y vibración cuando llega algo
+   nuevo mientras la app está abierta. Con la app cerrada, el aviso llega
+   por correo (Gmail suena en el celular). */
+var AUDIO = null;
+function sonar() {
+  try {
+    if (navigator.vibrate) navigator.vibrate([120, 80, 120]);
+    AUDIO = AUDIO || new (window.AudioContext || window.webkitAudioContext)();
+    if (AUDIO.state === 'suspended') AUDIO.resume();
+    [[880, 0], [1320, 0.16]].forEach(function (n) {
+      var o = AUDIO.createOscillator(), g = AUDIO.createGain(), t0 = AUDIO.currentTime + n[1];
+      o.type = 'sine'; o.frequency.value = n[0];
+      g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(0.25, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.22);
+      o.connect(g); g.connect(AUDIO.destination); o.start(t0); o.stop(t0 + 0.25);
+    });
+  } catch (e) {}
+}
+// Los navegadores sólo dejan sonar después de un primer toque: se "despierta" ahí.
+document.addEventListener('pointerdown', function () {
+  try { AUDIO = AUDIO || new (window.AudioContext || window.webkitAudioContext)(); if (AUDIO.state === 'suspended') AUDIO.resume(); } catch (e) {}
+}, { once: true });
+function ponerTitulo(s) {
+  var n = (s.mensajes_sin_leer || 0) + (s.avisos_sin_leer || 0) + (s.actas_pendientes || 0);
+  document.title = (n ? '(' + n + ') ' : '') + 'Equipo · MS Universe';
 }
 function datoIr(n, e, cls, fn) {
   return '<button class="dato ' + (cls || '') + '" onclick="' + fn + '"><span class="n">' + n + '</span><span class="e">' + e + '</span></button>';
@@ -2010,9 +2081,11 @@ function pintarMsgs(ms) {
   var c = estado.canal, box = $('msgs'), yo = estado.yo.perfil.correo;
   if (!box) return;
   var abajo = box.scrollHeight - box.scrollTop - box.clientHeight < 60;
+  var primera = !c.cargado; c.cargado = true;
   ms.forEach(function (m) {
     if (c.ids[m.id]) return;
     c.ids[m.id] = 1;
+    if (!primera && m.correo !== yo) sonar();
     if (m.ts > c.ultimo) c.ultimo = m.ts;
     var mio = m.correo === yo;
     var d = document.createElement('div');
