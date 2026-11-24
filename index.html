@@ -728,12 +728,12 @@ async function inicio(aviso) {
   /* Dirección sin horario no checa: su portada es el tablero, no el reloj.
      Si algún día le ponen horario, ve el checador con sus accesos abajo. */
   // Quien checa acepta el aviso de privacidad antes de cualquier cosa.
-  if (!r.perfil.aviso_aceptado && !r.perfil.admin) return pantallaAviso();
+  if (!r.perfil.aviso_aceptado && (!r.perfil.admin || r.perfil.confianza)) return pantallaAviso();
   portada(aviso);
 }
 function esSoloDireccion() {
   var r = estado.yo;
-  return !!(r && r.perfil.admin && !r.horario_hoy && !r.turno.length);
+  return !!(r && r.perfil.admin && !r.perfil.confianza && !r.horario_hoy && !r.turno.length);
 }
 function miChecador() { estado.verChecador = true; inicio(); }
 function accesosDireccion() {
@@ -754,7 +754,8 @@ function pantallaChecador(aviso) {
   var porTipo = {};
   r.turno.forEach(function (c) { porTipo[c.tipo] = c; });
   var toca = r.siguientes[0];
-  var pasos = ORDEN.map(function (t) {
+  var conf = r.perfil.confianza;
+  var pasos = ORDEN.filter(function (t) { return !conf || porTipo[t] || t === 'ENTRADA' || t === 'SALIDA'; }).map(function (t) {
     var c = porTipo[t];
     var cls = c ? (c.estatus === 'FUERA_DE_ZONA' ? 'paso fuera' : 'paso hecho') : (t === toca ? 'paso toca' : 'paso');
     return '<div class="' + cls + '"><span class="k">' + NOMBRE[t] + '</span>' +
@@ -776,13 +777,13 @@ function pantallaChecador(aviso) {
   pintar((aviso || '') +
     '<div class="reloj"><div class="h" id="rH">--:--</div>' +
     '<div class="f" id="rF"></div>' +
-    '<div class="hr">' + (r.horario_hoy ? 'Tu horario hoy: ' + esc(r.horario_hoy) + (r.hoy_sede ? ' en ' + esc(r.hoy_sede) : '') + (r.hoy_ajustado ? ' · ajustado' : '') : 'Hoy no tienes horario asignado') + '</div></div>' +
-    (r.manana && r.manana.ajustado ?
+    '<div class="hr">' + (conf ? 'Horario libre · personal de confianza' : r.horario_hoy ? 'Tu horario hoy: ' + esc(r.horario_hoy) + (r.hoy_sede ? ' en ' + esc(r.hoy_sede) : '') + (r.hoy_ajustado ? ' · ajustado' : '') : 'Hoy no tienes horario asignado') + '</div></div>' +
+    (conf ? '' : r.manana && r.manana.ajustado ?
       '<div class="aviso a-warn"><b>Mañana cambia tu horario:</b> ' +
       (r.manana.horario ? 'entras ' + esc(r.manana.horario) + (r.manana.sede ? ' en ' + esc(r.manana.sede) : '') : 'descansas') +
       (r.manana.motivo ? ' · ' + esc(r.manana.motivo) : '') + '</div>' :
       (r.manana ? '<p class="mini centro" style="margin:-6px 0 12px">Mañana: ' + esc(r.manana.horario || 'descanso') + '</p>' : '')) +
-    '<div class="pasos">' + pasos + '</div>' +
+    '<div class="pasos"' + (conf ? ' style="grid-template-columns:1fr 1fr"' : '') + '>' + pasos + '</div>' +
     botones +
     '<div class="espacio"></div>' +
     '<button class="b-ghost" onclick="pantallaMias()">Mis últimos 15 días</button>' +
@@ -1215,7 +1216,7 @@ function detallePersona(i) {
         '<span class="t"><span class="n">' + esc(fechaCorta(d.fecha)) + '</span>' +
         '<span class="c">' + esc(d.horario) + (d.ajustado && d.horario.indexOf('ajustado') < 0 ? ' (ajustado)' : '') + ' · ' + (d.llegada || '—') + ' → ' + (d.salida || '—') +
         (d.min_comida != null ? ' · comida ' + d.min_comida + '′' : '') + '</span></span>' +
-        '<span style="text-align:right">' + (marcas(d.marcas.filter(function (m) { return m !== 'PRECISION_BAJA'; })) || pill(['Bien', 'p-ok'])) +
+        '<span style="text-align:right">' + (marcas(d.marcas.filter(function (m) { return m !== 'PRECISION_BAJA'; })) || (d.min_extra ? pill(['Tiempo extra', 'p-warn']) : pill([d.confianza ? 'Registrado' : 'Bien', 'p-ok']))) +
         (d.min_trabajados != null ? '<div class="mini mono">' + hm(d.min_trabajados) + ' h' +
           (d.min_extra ? ' · <span style="color:var(--warn)">+' + hm(d.min_extra) + ' extra</span>' : '') + '</div>' : '') + '</span></button>' +
         '<div class="det">' + (d.min_extra ? '<p class="mini" style="padding-left:12px">Tiempo extra: ' + hm(d.extra_doble) + ' al doble · ' +
@@ -1388,8 +1389,9 @@ async function pantallaPersonal() {
     var i = r.personal.indexOf(p);
     var dias = DIAS.filter(function (d) { return p[d]; }).length;
     return '<div class="lista"><div class="item item-abre" onclick="editarPersona(' + i + ')"><div class="l">' +
-      '<span>' + esc(p.puesto || p.rol) + ' · ' + (dias ? dias + ' días' : 'sin horario') + '</span>' +
+      '<span>' + esc(p.puesto || p.rol) + ' · ' + (p.confianza === 'SI' ? 'horario libre' : dias ? dias + ' días' : 'sin horario') + '</span>' +
       '<div>' + esc(p.nombre) + '</div></div>' +
+      (p.confianza === 'SI' ? pill(['Confianza', 'p-neutral']) : '') +
       (p.rol !== 'COLABORADOR' ? pill([p.rol === 'DIRECTOR' ? 'Dirección' : 'Gerencia', 'p-info']) : '') + '</div></div>';
   }
   encabezado('Personal', activos.length + ' activos');
@@ -1419,7 +1421,12 @@ function editarPersona(i) {
     '<div class="dos"><div class="campo"><label>Sede habitual</label><select id="pSede">' + sedes + '</select></div>' +
     '<div class="campo"><label>Rol</label><select id="pRol">' + rol + '</select></div></div>' +
     '</div>' +
-    '<div class="card"><h3>Horario</h3><p class="mini">Formato 08:00-17:00. Vacío = descanso. Un turno nocturno se escribe 20:00-08:00.</p>' +
+    '<div class="card"><label class="check"><input type="checkbox" id="pConf"' + (p.confianza === 'SI' ? ' checked' : '') +
+      ' onchange="$(\'cardHorario\').style.opacity=this.checked?.35:1"> De confianza: horario libre</label>' +
+      '<p class="mini" style="margin:6px 0 0">Para dirección, gerencia o supervisión general, medidos por resultados. Checa sólo llegada y salida ' +
+      '(la ley pide registrar su jornada), no tiene horario asignado y nunca le aparecen retardos, faltas ni comida larga. ' +
+      'Sólo se avisa si un día pasa de 12 horas. Quién es de confianza lo definen sus funciones, no el puesto.</p></div>' +
+    '<div class="card" id="cardHorario"' + (p.confianza === 'SI' ? ' style="opacity:.35"' : '') + '><h3>Horario</h3><p class="mini">Formato 08:00-17:00. Vacío = descanso. Un turno nocturno se escribe 20:00-08:00.</p>' +
     '<div class="dias7">' + DIAS.map(function (d) {
       return '<span class="d">' + DIA_LARGO[d] + '</span><input id="h_' + d + '" value="' + esc(p[d] || '') + '" placeholder="descanso" inputmode="numeric">';
     }).join('') + '</div>' +
@@ -1436,7 +1443,7 @@ function copiarLunes() { var v = $('h_lun').value; ['mar', 'mie', 'jue', 'vie'].
 async function guardarPersona() {
   var x = { correo: $('pCorreo').value, nombre: $('pNombre').value, puesto: $('pPuesto').value,
             sede_base: $('pSede').value, rol: $('pRol').value, comida_min: $('pComida').value,
-            notas: $('pNotas').value, activo: $('pActivo').checked ? 'SI' : 'NO' };
+            notas: $('pNotas').value, activo: $('pActivo').checked ? 'SI' : 'NO', confianza: $('pConf').checked ? 'SI' : '' };
   DIAS.forEach(function (d) { x[d] = $('h_' + d).value.replace(/\s/g, '').replace(/[–—]/g, '-'); });
   var r = await enviar({ accion: 'personal_guardar', persona: x });
   if (!r.ok) return alertar(r.error, 'a-err');
@@ -1519,7 +1526,7 @@ function badge(n, cls) {
 }
 function chequeaSiHoy() {
   var r = estado.yo;
-  return !!(r && (r.horario_hoy || r.turno.length));
+  return !!(r && (r.perfil.confianza || r.horario_hoy || r.turno.length));
 }
 
 async function portada(aviso) {
@@ -1540,7 +1547,7 @@ async function portada(aviso) {
     hoy = '<div class="reloj" style="text-align:left;padding:15px 16px">' +
       '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">' +
       '<div class="h" id="rH" style="font-size:2rem">--:--</div>' +
-      '<div class="f" style="margin:0;text-align:right">' + (r.horario_hoy ? 'Hoy ' + esc(r.horario_hoy) : 'Sin horario hoy') +
+      '<div class="f" style="margin:0;text-align:right">' + (p.confianza ? 'Horario libre' : r.horario_hoy ? 'Hoy ' + esc(r.horario_hoy) : 'Sin horario hoy') +
       (r.hoy_sede ? '<br>' + esc(r.hoy_sede) : '') + '</div></div>' +
       (hecho ? '<div class="hr" style="margin-top:8px">' + esc(hecho) + '</div>' : '') +
       '<button class="b-primary" style="margin-top:12px" onclick="pantallaChecador()">' + VERBO[toca] + '</button></div>';
@@ -1549,7 +1556,7 @@ async function portada(aviso) {
       '<a href="#" onclick="pantallaChecador();return false" style="color:inherit">Abrir checador</a></div>';
   }
   var manana = '';
-  if (r.manana && !p.admin || (r.manana && r.manana.ajustado)) {
+  if (!p.confianza && (r.manana && !p.admin || (r.manana && r.manana.ajustado))) {
     var mt = r.manana.horario ? 'entras ' + esc(r.manana.horario) + (r.manana.sede ? ' en ' + esc(r.manana.sede) : '') : 'descansas';
     manana = r.manana.ajustado ?
       '<div class="aviso a-warn"><b>Mañana cambia tu horario:</b> ' + mt + (r.manana.motivo ? ' · ' + esc(r.manana.motivo) : '') + '</div>' :
@@ -1578,7 +1585,7 @@ async function portada(aviso) {
       '<span class="q">Equipo y directos</span></button>' +
     '<button class="baldosa" onclick="pantallaAvisos()">Avisos' + badge(s.avisos_sin_leer, 'p-warn') +
       '<span class="q">' + (s.avisos_sin_leer ? 'Tienes avisos sin leer' : 'Comunicados del equipo') + '</span></button>' +
-    '<button class="baldosa" onclick="pantallaChecador()">Checador<span class="q">Llegada, comida, salida</span></button>' +
+    '<button class="baldosa" onclick="pantallaChecador()">Checador<span class="q">' + (p.confianza ? 'Llegada y salida' : 'Llegada, comida, salida') + '</span></button>' +
     (s.actas ? '<button class="baldosa' + (s.actas_pendientes ? ' urge' : '') + '" onclick="pantallaActasMias()">Mis actas' +
       badge(s.actas_pendientes, 'p-crit') + '<span class="q">' + (s.actas_pendientes ? 'Pendiente de acuse' : 'Historial') + '</span></button>' : '') +
     '<button class="baldosa" onclick="pantallaMias()">Mi asistencia<span class="q">Últimos 15 días</span></button>' +
