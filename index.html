@@ -532,6 +532,8 @@ var DIA_LARGO = { lun: 'Lun', mar: 'Mar', mie: 'Mié', jue: 'Jue', vie: 'Vie', s
 var MARCA = {
   FALTA: ['Falta', 'p-crit'], RETARDO: ['Retardo', 'p-warn'], COMIDA_LARGA: ['Comida larga', 'p-warn'],
   SALIDA_ANTES: ['Salió antes', 'p-warn'], SIN_SALIDA: ['Sin salida', 'p-warn'],
+  CORRECCION_PENDIENTE: ['Corrección por confirmar', 'p-warn'], CORREGIDA: ['Salida corregida', 'p-info'],
+  CORRECCION_RECHAZADA: ['Corrección rechazada', 'p-crit'],
   FUERA_DE_ZONA: ['Fuera de zona', 'p-crit'], OTRO_TELEFONO: ['Otro teléfono', 'p-crit'],
   TELEFONO_COMPARTIDO: ['Teléfono compartido', 'p-crit'], PRECISION_BAJA: ['GPS impreciso', 'p-neutral'],
   PENDIENTE: ['Aún no entra', 'p-neutral'], OTRA_SEDE: ['Llegó a otra sede', 'p-warn'],
@@ -1120,7 +1122,7 @@ function filaChecada(c) {
   var mal = c.estatus === 'FUERA_DE_ZONA' || /OTRO_TELEFONO|TELEFONO_COMPARTIDO/.test(c.alertas || '');
   var fid = 'f' + c.id.replace(/\W/g, '');
   return '<div class="r' + (mal ? ' mal' : '') + '"><span><b>' + esc(c.hora) + '</b> ' + esc(c.nombre_tipo) +
-    ' · ' + esc(c.sede) + ' · ' + c.distancia_m + ' m' +
+    ' · ' + esc(c.sede) + (c.estatus === 'CORRECCION' ? '' : ' · ' + c.distancia_m + ' m') +
     (c.motivo ? '<br>«' + esc(c.motivo) + '»' : '') +
     (c.alertas ? '<br>' + marcas(c.alertas.split(' ')) : '') + '</span>' +
     (c.tiene_foto ? '<button class="ver-foto" onclick="verFoto(\'' + c.id + '\',\'' + fid + '\',this)">Foto</button>' : '') +
@@ -1230,10 +1232,66 @@ function detallePersona(i) {
         '<div class="det">' + (d.min_extra ? '<p class="mini" style="padding-left:12px">Tiempo extra: ' + hm(d.extra_doble) + ' al doble · ' +
           hm(d.extra_triple) + ' al triple' + (d.extra_exceso ? ' · <b style="color:var(--crit)">' + hm(d.extra_exceso) + ' fuera de la ley</b>' : '') +
           ' (programadas ' + hm(d.min_programados) + ')</p>' : '') +
-        (d.checadas.length ? d.checadas.map(filaChecada).join('') : '<p class="mini" style="padding-left:12px">Sin checadas.</p>') + '</div></div>';
+        (d.checadas.length ? d.checadas.map(filaChecada).join('') : '<p class="mini" style="padding-left:12px">Sin checadas.</p>') +
+        (d.marcas.indexOf('SIN_SALIDA') >= 0 ? '<button class="b-ghost" style="margin:8px 0 4px" onclick="pantallaCorregir(' + i + ',\'' + d.fecha + '\')">Registrar salida olvidada</button>' : '') +
+        '</div></div>';
     }).join('') + '</div>' +
     '<button class="b-ghost" onclick="pantallaReporte(\'' + r.desde + '\',\'' + r.hasta + '\')">Volver al reporte</button>');
 }
+/* ---------- salida olvidada: gerencia la captura, la persona la confirma ---------- */
+function pantallaCorregir(i, fecha) {
+  var r = estado.reporte, t = r.totales[i];
+  var d = r.detalle.filter(function (x) { return x.correo === t.correo && x.fecha === fecha; })[0];
+  encabezado('Salida olvidada', t.nombre + ' · ' + fechaCorta(fecha));
+  var h = (d.horario || '').split('–')[1] || '';
+  pintar('<div class="card">' +
+    '<p>Llegó a las <b>' + esc(d.llegada || '—') + '</b>' + (d.salida_comida ? ', salió a comer ' + esc(d.salida_comida) + ' y regresó ' + esc(d.regreso_comida || '—') : '') +
+    '. No checó su salida.</p>' +
+    '<div class="campo"><label>Hora real de salida</label><input id="cHora" type="time" value="' + esc(h.slice(0, 5)) + '"></div>' +
+    '<div class="campo"><label>Motivo</label><textarea id="cMotivo" rows="2">Olvidó checar su salida.</textarea></div>' +
+    '<p class="mini">No se borra ni se cambia ninguna checada: se agrega esta salida marcada como corregida, con tu nombre y el motivo. ' +
+    'A ' + esc(t.nombre.split(' ')[0]) + ' le llega un aviso para confirmarla o decir su hora real.</p></div>' +
+    '<button class="b-dark" onclick="guardarCorreccion(' + i + ',\'' + fecha + '\')">Registrar salida</button>' +
+    '<button class="b-ghost" onclick="detallePersona(' + i + ')">Cancelar</button>');
+}
+async function guardarCorreccion(i, fecha) {
+  var r = estado.reporte, t = r.totales[i];
+  var res = await enviar({ accion: 'correccion_crear', correccion: { correo: t.correo, jornada: fecha, hora: $('cHora').value, motivo: $('cMotivo').value } });
+  if (!res.ok) return alertar(res.error, 'a-err');
+  await pantallaReporte(r.desde, r.hasta);
+  var j = estado.reporte.totales.map(function (x) { return x.correo; }).indexOf(t.correo);
+  if (j >= 0) detallePersona(j);
+  alertar('Salida registrada. ' + t.nombre.split(' ')[0] + ' recibió el aviso para confirmarla.', 'a-ok');
+}
+async function pantallaCorrecciones() {
+  encabezado('Mis salidas corregidas', ''); cargando();
+  var r = await enviar({ accion: 'correcciones_mias' });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div>' + volver());
+  estado.correcciones = r.correcciones;
+  if (!r.correcciones.length) return pintar('<p class="sub centro">No tienes salidas corregidas.</p>' + volver());
+  pintar(r.correcciones.map(function (c, i) {
+    var pend = c.estado === 'PENDIENTE';
+    return '<div class="card"' + (pend ? ' style="border-color:var(--warn)"' : '') + '>' +
+      '<div class="eti">' + esc(c.fecha_texto) + '</div>' +
+      '<p style="margin:4px 0">' + esc(c.autor) + ' registró tu salida a las <b>' + esc(c.hora) + '</b> porque no quedó checada.</p>' +
+      '<p class="mini">Motivo: ' + esc(c.motivo) + '</p>' +
+      (pend ? '<button class="b-dark" onclick="responderCorreccion(' + i + ',true)">Sí, es correcto</button>' +
+        '<div class="campo" style="margin-top:10px"><label>¿No es correcto? Escribe tu hora real</label><input id="cResp' + i + '" placeholder="Ej. salí a las 17:20"></div>' +
+        '<button class="b-ghost" onclick="responderCorreccion(' + i + ',false)">No es correcto</button>' :
+        pill(c.estado === 'CONFIRMADA' ? ['Confirmaste', 'p-ok'] : ['No estuviste de acuerdo', 'p-crit']) +
+        (c.respuesta ? '<p class="mini" style="margin-top:6px">Tu respuesta: «' + esc(c.respuesta) + '»</p>' : '')) +
+      '</div>';
+  }).join('') + volver());
+}
+async function responderCorreccion(i, acepta) {
+  var c = estado.correcciones[i];
+  var texto = acepta ? '' : ($('cResp' + i).value || '').trim();
+  var r = await enviar({ accion: 'correccion_responder', id: c.id, acepta: acepta, texto: texto });
+  if (!r.ok) return alertar(r.error, 'a-err');
+  await pantallaCorrecciones();
+  alertar(acepta ? 'Gracias, quedó confirmada.' : 'Listo, gerencia recibió tu respuesta.', 'a-ok');
+}
+
 function datoFijo(n, e, cls) { return '<div class="dato ' + (cls || '') + '"><span class="n">' + esc(n) + '</span><span class="e">' + e + '</span></div>'; }
 
 function exportarCSV() {
@@ -1545,7 +1603,9 @@ async function portada(aviso) {
   estado.resumen = s;
   var p = r.perfil;
   encabezado('Equipo', p.nombre);
-  var push = tarjetaPush(await estadoPush());
+  var push = tarjetaPush(await estadoPush()) +
+    (s.correcciones_pendientes ? '<div class="aviso a-warn" style="cursor:pointer" onclick="pantallaCorrecciones()"><b>Gerencia registró una salida que no checaste.</b> ' +
+      'Tócalo para confirmarla o decir tu hora real.</div>' : '');
 
   var hoy = '';
   if (chequeaSiHoy()) {
@@ -1582,6 +1642,7 @@ async function portada(aviso) {
       datoIr(e.no_llega, 'no han llegado', e.no_llega ? 'd-crit' : '', 'pantallaTablero()') +
       datoIr(e.retardos, 'retardos', e.retardos ? 'd-warn' : '', 'pantallaTablero()') +
       datoIr(e.tareas_vencidas, 'tareas vencidas', e.tareas_vencidas ? 'd-crit' : '', 'pantallaTareasEquipo()') +
+      (e.sin_salida_semana ? datoIr(e.sin_salida_semana, 'salidas sin checar esta semana', 'd-warn', 'pantallaReporte()') : '') +
       (e.alertas_ley_semana ? datoIr(e.alertas_ley_semana, 'alertas de jornada esta semana', 'd-crit', 'pantallaReporte()') : '') +
       '</div>' +
       (e.manana_publicado ? '' : '<div class="aviso a-warn" style="cursor:pointer" onclick="pantallaAjustes()">' +
@@ -1641,7 +1702,7 @@ async function portada(aviso) {
       if (n.mensajes_sin_leer > (o.mensajes_sin_leer || 0) || n.tareas > (o.tareas || 0) ||
           n.avisos_sin_leer > (o.avisos_sin_leer || 0) || n.actas_pendientes > (o.actas_pendientes || 0)) sonar();
       if (n.mensajes_sin_leer !== o.mensajes_sin_leer || n.tareas !== o.tareas || n.avisos_sin_leer !== o.avisos_sin_leer ||
-          n.actas_pendientes !== o.actas_pendientes) inicio();
+          n.actas_pendientes !== o.actas_pendientes || n.correcciones_pendientes !== o.correcciones_pendientes) inicio();
     }).catch(function () {});
   }, 30000);
 }
@@ -1749,6 +1810,7 @@ function irA(ver) {
   if (ver === 'tareas') return pantallaTareas();
   if (ver === 'avisos') return pantallaAvisos();
   if (ver === 'actas') return pantallaActasMias();
+  if (ver === 'correcciones') return pantallaCorrecciones();
   if (ver === 'checador' && estado.yo) return pantallaChecador();
   if (ver === 'equipo' && estado.yo && estado.yo.perfil.admin) return pantallaTablero();
   if (ver === 'chat:general') return pantallaCanal('general', 'Equipo · todos');
