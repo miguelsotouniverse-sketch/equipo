@@ -534,6 +534,7 @@ var MARCA = {
   SALIDA_ANTES: ['Salió antes', 'p-warn'], SIN_SALIDA: ['Sin salida', 'p-warn'],
   CORRECCION_PENDIENTE: ['Corrección por confirmar', 'p-warn'], CORREGIDA: ['Salida corregida', 'p-info'],
   CORRECCION_RECHAZADA: ['Corrección rechazada', 'p-crit'],
+  SIN_COMIDA: ['Sin comida checada', 'p-warn'], SIN_REGRESO: ['Sin regreso de comer', 'p-warn'],
   FUERA_DE_ZONA: ['Fuera de zona', 'p-crit'], OTRO_TELEFONO: ['Otro teléfono', 'p-crit'],
   TELEFONO_COMPARTIDO: ['Teléfono compartido', 'p-crit'], PRECISION_BAJA: ['GPS impreciso', 'p-neutral'],
   PENDIENTE: ['Aún no entra', 'p-neutral'], OTRA_SEDE: ['Llegó a otra sede', 'p-warn'],
@@ -1233,50 +1234,66 @@ function detallePersona(i) {
           hm(d.extra_triple) + ' al triple' + (d.extra_exceso ? ' · <b style="color:var(--crit)">' + hm(d.extra_exceso) + ' fuera de la ley</b>' : '') +
           ' (programadas ' + hm(d.min_programados) + ')</p>' : '') +
         (d.checadas.length ? d.checadas.map(filaChecada).join('') : '<p class="mini" style="padding-left:12px">Sin checadas.</p>') +
-        (d.marcas.indexOf('SIN_SALIDA') >= 0 ? '<button class="b-ghost" style="margin:8px 0 4px" onclick="pantallaCorregir(' + i + ',\'' + d.fecha + '\')">Registrar salida olvidada</button>' : '') +
+        (d.llegada && !d.salida_comida && !d.confianza && (d.marcas.indexOf('SIN_COMIDA') >= 0 || d.marcas.indexOf('SIN_SALIDA') >= 0) ?
+          '<button class="b-ghost" style="margin:8px 0 4px" onclick="pantallaCorregir(' + i + ',\'' + d.fecha + '\',\'COMIDA\')">Registrar comida olvidada</button>' : '') +
+        (d.marcas.indexOf('SIN_REGRESO') >= 0 ? '<button class="b-ghost" style="margin:8px 0 4px" onclick="pantallaCorregir(' + i + ',\'' + d.fecha + '\',\'REGRESO\')">Registrar regreso de comer olvidado</button>' : '') +
+        (d.marcas.indexOf('SIN_SALIDA') >= 0 ? '<button class="b-ghost" style="margin:8px 0 4px" onclick="pantallaCorregir(' + i + ',\'' + d.fecha + '\',\'SALIDA\')">Registrar salida olvidada</button>' : '') +
         '</div></div>';
     }).join('') + '</div>' +
     '<button class="b-ghost" onclick="pantallaReporte(\'' + r.desde + '\',\'' + r.hasta + '\')">Volver al reporte</button>');
 }
 /* ---------- salida olvidada: gerencia la captura, la persona la confirma ---------- */
-function pantallaCorregir(i, fecha) {
+function pantallaCorregir(i, fecha, tipo) {
+  tipo = tipo || 'SALIDA';
   var r = estado.reporte, t = r.totales[i];
   var d = r.detalle.filter(function (x) { return x.correo === t.correo && x.fecha === fecha; })[0];
-  encabezado('Salida olvidada', t.nombre + ' · ' + fechaCorta(fecha));
-  var h = (d.horario || '').split('–')[1] || '';
+  var titulo = { SALIDA: 'Salida olvidada', COMIDA: 'Comida olvidada', REGRESO: 'Regreso de comer olvidado' }[tipo];
+  encabezado(titulo, t.nombre + ' · ' + fechaCorta(fecha));
+  var fin = ((d.horario || '').split('–')[1] || '').slice(0, 5);
+  var campos;
+  if (tipo === 'COMIDA') campos =
+    '<div class="dos"><div class="campo"><label>Salió a comer</label><input id="cHora" type="time" value="14:00"></div>' +
+    '<div class="campo"><label>Regresó</label><input id="cHora2" type="time" value="15:00"></div></div>';
+  else campos = '<div class="campo"><label>' + (tipo === 'REGRESO' ? 'Hora real de regreso de comer' : 'Hora real de salida') + '</label>' +
+    '<input id="cHora" type="time" value="' + esc(tipo === 'SALIDA' ? fin : '') + '"></div>';
   pintar('<div class="card">' +
-    '<p>Llegó a las <b>' + esc(d.llegada || '—') + '</b>' + (d.salida_comida ? ', salió a comer ' + esc(d.salida_comida) + ' y regresó ' + esc(d.regreso_comida || '—') : '') +
-    '. No checó su salida.</p>' +
-    '<div class="campo"><label>Hora real de salida</label><input id="cHora" type="time" value="' + esc(h.slice(0, 5)) + '"></div>' +
-    '<div class="campo"><label>Motivo</label><textarea id="cMotivo" rows="2">Olvidó checar su salida.</textarea></div>' +
-    '<p class="mini">No se borra ni se cambia ninguna checada: se agrega esta salida marcada como corregida, con tu nombre y el motivo. ' +
-    'A ' + esc(t.nombre.split(' ')[0]) + ' le llega un aviso para confirmarla o decir su hora real.</p></div>' +
-    '<button class="b-dark" onclick="guardarCorreccion(' + i + ',\'' + fecha + '\')">Registrar salida</button>' +
+    '<p>Llegó a las <b>' + esc(d.llegada || '—') + '</b>' +
+      (d.salida_comida ? ', salió a comer ' + esc(d.salida_comida) + (d.regreso_comida ? ' y regresó ' + esc(d.regreso_comida) : ' y no checó su regreso') : ', sin comida checada') +
+      (d.salida ? ' y salió a las <b>' + esc(d.salida) + '</b>.' : '. No checó su salida.') + '</p>' +
+    campos +
+    '<div class="campo"><label>Motivo</label><textarea id="cMotivo" rows="2">' +
+      (tipo === 'SALIDA' ? 'Olvidó checar su salida.' : tipo === 'REGRESO' ? 'Olvidó checar su regreso de comer.' : 'Olvidó checar su comida.') + '</textarea></div>' +
+    '<p class="mini">No se borra ni se cambia ninguna checada: se agrega lo que faltó, marcado como corregido, con tu nombre y el motivo. ' +
+    'A ' + esc(t.nombre.split(' ')[0]) + ' le llega un aviso para confirmarlo o decir su horario real.</p></div>' +
+    '<button class="b-dark" onclick="guardarCorreccion(' + i + ',\'' + fecha + '\',\'' + tipo + '\')">Registrar</button>' +
     '<button class="b-ghost" onclick="detallePersona(' + i + ')">Cancelar</button>');
 }
-async function guardarCorreccion(i, fecha) {
+async function guardarCorreccion(i, fecha, tipo) {
   var r = estado.reporte, t = r.totales[i];
-  var res = await enviar({ accion: 'correccion_crear', correccion: { correo: t.correo, jornada: fecha, hora: $('cHora').value, motivo: $('cMotivo').value } });
+  var c = { tipo: tipo || 'SALIDA', correo: t.correo, jornada: fecha, hora: $('cHora').value, motivo: $('cMotivo').value };
+  if ($('cHora2')) c.hora2 = $('cHora2').value;
+  var res = await enviar({ accion: 'correccion_crear', correccion: c });
   if (!res.ok) return alertar(res.error, 'a-err');
   await pantallaReporte(r.desde, r.hasta);
   var j = estado.reporte.totales.map(function (x) { return x.correo; }).indexOf(t.correo);
   if (j >= 0) detallePersona(j);
-  alertar('Salida registrada. ' + t.nombre.split(' ')[0] + ' recibió el aviso para confirmarla.', 'a-ok');
+  alertar('Registrado. ' + t.nombre.split(' ')[0] + ' recibió el aviso para confirmarlo.', 'a-ok');
 }
 async function pantallaCorrecciones() {
-  encabezado('Mis salidas corregidas', ''); cargando();
+  encabezado('Mis checadas corregidas', ''); cargando();
   var r = await enviar({ accion: 'correcciones_mias' });
   if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div>' + volver());
   estado.correcciones = r.correcciones;
-  if (!r.correcciones.length) return pintar('<p class="sub centro">No tienes salidas corregidas.</p>' + volver());
+  if (!r.correcciones.length) return pintar('<p class="sub centro">No tienes checadas corregidas.</p>' + volver());
   pintar(r.correcciones.map(function (c, i) {
     var pend = c.estado === 'PENDIENTE';
     return '<div class="card"' + (pend ? ' style="border-color:var(--warn)"' : '') + '>' +
       '<div class="eti">' + esc(c.fecha_texto) + '</div>' +
-      '<p style="margin:4px 0">' + esc(c.autor) + ' registró tu salida a las <b>' + esc(c.hora) + '</b> porque no quedó checada.</p>' +
+      '<p style="margin:4px 0">' + esc(c.autor) + ' registró ' + ({ COMIDA: 'tu comida de', REGRESO: 'tu regreso de comer a las', SALIDA: 'tu salida a las' }[c.tipo] || 'tu salida a las') +
+        ' <b>' + esc(c.hora) + '</b> porque no quedó checada.</p>' +
       '<p class="mini">Motivo: ' + esc(c.motivo) + '</p>' +
       (pend ? '<button class="b-dark" onclick="responderCorreccion(' + i + ',true)">Sí, es correcto</button>' +
-        '<div class="campo" style="margin-top:10px"><label>¿No es correcto? Escribe tu hora real</label><input id="cResp' + i + '" placeholder="Ej. salí a las 17:20"></div>' +
+        '<div class="campo" style="margin-top:10px"><label>¿No es correcto? Escribe tu horario real</label><input id="cResp' + i + '" placeholder="' + (c.tipo === 'COMIDA' ? 'Ej. comí de 14:30 a 15:15' : 'Ej. fue a las 17:20') + '"></div>' +
         '<button class="b-ghost" onclick="responderCorreccion(' + i + ',false)">No es correcto</button>' :
         pill(c.estado === 'CONFIRMADA' ? ['Confirmaste', 'p-ok'] : ['No estuviste de acuerdo', 'p-crit']) +
         (c.respuesta ? '<p class="mini" style="margin-top:6px">Tu respuesta: «' + esc(c.respuesta) + '»</p>' : '')) +
@@ -1300,11 +1317,11 @@ function exportarCSV() {
   var L = [];
   L.push(['RESUMEN', r.desde + ' a ' + r.hasta].join(','));
   L.push(['Persona', 'Correo', 'Puesto', 'Días programados', 'Asistencias', 'Faltas', 'Retardos', 'Minutos de retardo',
-    'Comidas largas', 'Salidas antes', 'Sin salida', 'Días con incidencia', 'Horas trabajadas',
+    'Comidas largas', 'Salidas antes', 'Sin salida', 'Sin comida checada', 'Días con incidencia', 'Horas trabajadas',
     'Horas extra total', 'Horas extra al doble', 'Horas extra al triple', 'Horas extra fuera de la ley', 'Días con alerta legal'].join(','));
   r.totales.forEach(function (t) {
     L.push([t.nombre, t.correo, t.puesto, t.programados, t.asistencias, t.faltas, t.retardos, t.min_retardo,
-      t.comidas_largas, t.salidas_antes, t.sin_salida, t.incidencias, t.horas,
+      t.comidas_largas, t.salidas_antes, t.sin_salida, t.sin_comida || 0, t.incidencias, t.horas,
       t.horas_extra, t.horas_doble, t.horas_triple, t.horas_exceso, t.alertas_ley].map(c).join(','));
   });
   L.push('');
@@ -1604,7 +1621,7 @@ async function portada(aviso) {
   var p = r.perfil;
   encabezado('Equipo', p.nombre);
   var push = tarjetaPush(await estadoPush()) +
-    (s.correcciones_pendientes ? '<div class="aviso a-warn" style="cursor:pointer" onclick="pantallaCorrecciones()"><b>Gerencia registró una salida que no checaste.</b> ' +
+    (s.correcciones_pendientes ? '<div class="aviso a-warn" style="cursor:pointer" onclick="pantallaCorrecciones()"><b>Gerencia registró una checada que olvidaste.</b> ' +
       'Tócalo para confirmarla o decir tu hora real.</div>' : '');
 
   var hoy = '';
@@ -1642,6 +1659,7 @@ async function portada(aviso) {
       datoIr(e.no_llega, 'no han llegado', e.no_llega ? 'd-crit' : '', 'pantallaTablero()') +
       datoIr(e.retardos, 'retardos', e.retardos ? 'd-warn' : '', 'pantallaTablero()') +
       datoIr(e.tareas_vencidas, 'tareas vencidas', e.tareas_vencidas ? 'd-crit' : '', 'pantallaTareasEquipo()') +
+      (e.sin_comida_semana ? datoIr(e.sin_comida_semana, 'días sin comida checada esta semana', 'd-warn', 'pantallaReporte()') : '') +
       (e.sin_salida_semana ? datoIr(e.sin_salida_semana, 'salidas sin checar esta semana', 'd-warn', 'pantallaReporte()') : '') +
       (e.alertas_ley_semana ? datoIr(e.alertas_ley_semana, 'alertas de jornada esta semana', 'd-crit', 'pantallaReporte()') : '') +
       '</div>' +
