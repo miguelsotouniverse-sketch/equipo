@@ -1445,7 +1445,7 @@ function listaExpediente(e, admin, correo) {
           '<button class="b-ghost" style="margin:0" onclick="revisarDoc(\'' + d.id + '\',false,0,\'' + c + '\')">Rechazar</button></div>' : '');
     }).join('');
     return '<div class="persona"><button onclick="this.parentNode.classList.toggle(\'abierto\')"><span class="t"><span class="n">' + esc(r.nombre) + '</span>' +
-      '<span class="c">' + (r.vence ? 'Vigente hasta ' + esc(fechaCorta(r.vence)) : r.docs.length ? r.docs.length + ' archivo' + (r.docs.length > 1 ? 's' : '') : 'Sin archivo') + '</span></span>' +
+      '<span class="c">' + (r.privado ? 'Sólo dirección · ' : '') + (r.vence ? 'Vigente hasta ' + esc(fechaCorta(r.vence)) : r.docs.length ? r.docs.length + ' archivo' + (r.docs.length > 1 ? 's' : '') : 'Sin archivo') + '</span></span>' +
       pill(EDOC[r.estado]) + '</button><div class="det">' + acciones +
       '<button class="b-ghost" style="margin:6px 0" onclick="subirDoc(\'' + r.tipo_id + '\',\'' + c + '\')">' + (ult ? 'Subir otra versión' : 'Subir') + '</button></div></div>';
   }).join('') + '</div>' +
@@ -1567,24 +1567,26 @@ async function pantallaDocTipos() {
   estado.docsEq = r;
   pintar('<p class="mini">«TODOS» = lo pide a todo el personal. Para ciertos puestos, escríbelos separados por coma, tal como están en Personal (' + esc(r.puestos.join(', ')) + ').</p>' +
     '<div class="card">' + r.tipos.map(function (t, i) {
-      return '<div class="lista"><div class="item item-abre" onclick="editarDocTipo(' + i + ')"><div class="l"><span>' + esc(t.puestos) + (t.vence === 'SI' ? ' · vence' : '') + '</span>' +
+      return '<div class="lista"><div class="item item-abre" onclick="editarDocTipo(' + i + ')"><div class="l"><span>' + esc(t.puestos) + (t.vence === 'SI' ? ' · vence' : '') + ((t.privado ? t.privado === 'SI' : t.id === 'CONTRATO') ? ' · sólo dirección' : '') + '</span>' +
         '<div>' + esc(t.nombre) + '</div></div></div></div>';
     }).join('') + '</div>' +
     '<button class="b-dark" onclick="editarDocTipo(-1)">Agregar documento</button>' +
     '<button class="b-ghost" onclick="pantallaDocsEquipo()">Volver a expedientes</button>');
 }
 function editarDocTipo(i) {
-  var t = i >= 0 ? estado.docsEq.tipos[i] : { id: '', nombre: '', puestos: 'TODOS', vence: 'NO' };
+  var t = i >= 0 ? estado.docsEq.tipos[i] : { id: '', nombre: '', puestos: 'TODOS', vence: 'NO', privado: 'NO' };
+  var priv = t.privado ? t.privado === 'SI' : t.id === 'CONTRATO';
   encabezado(i >= 0 ? t.nombre : 'Nuevo documento', 'Documentos por puesto');
   pintar('<div class="card"><div class="campo"><label>Nombre</label><input id="tNombre" value="' + esc(t.nombre) + '"></div>' +
     '<div class="campo"><label>Puestos que lo deben tener</label><input id="tPuestos" value="' + esc(t.puestos) + '"></div>' +
-    '<label class="check"><input type="checkbox" id="tVence"' + (t.vence === 'SI' ? ' checked' : '') + '> Tiene fecha de vencimiento</label></div>' +
+    '<label class="check"><input type="checkbox" id="tVence"' + (t.vence === 'SI' ? ' checked' : '') + '> Tiene fecha de vencimiento</label>' +
+    '<label class="check"><input type="checkbox" id="tPrivado"' + (priv ? ' checked' : '') + '> Sólo lo ven dirección y gerencia (la colaboradora no lo ve)</label></div>' +
     '<button class="b-dark" onclick="guardarDocTipo(\'' + esc(t.id) + '\',false)">Guardar</button>' +
     (i >= 0 ? '<button class="b-ghost" onclick="guardarDocTipo(\'' + esc(t.id) + '\',true)">Ya no pedir este documento</button>' : '') +
     '<button class="b-ghost" onclick="pantallaDocTipos()">Cancelar</button>');
 }
 async function guardarDocTipo(id, quitar) {
-  var r = await enviar({ accion: 'doc_tipo_guardar', tipo: { id: id, nombre: $('tNombre').value, puestos: $('tPuestos').value, vence: $('tVence').checked ? 'SI' : 'NO', quitar: quitar } });
+  var r = await enviar({ accion: 'doc_tipo_guardar', tipo: { id: id, nombre: $('tNombre').value, puestos: $('tPuestos').value, vence: $('tVence').checked ? 'SI' : 'NO', privado: $('tPrivado').checked ? 'SI' : 'NO', quitar: quitar } });
   if (!r.ok) return alertar(r.error, 'a-err');
   await pantallaDocTipos(); alertar('Guardado.', 'a-ok');
 }
