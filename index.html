@@ -1399,6 +1399,7 @@ async function pantallaPersonal() {
     return '<div class="lista"><div class="item item-abre" onclick="editarPersona(' + i + ')"><div class="l">' +
       '<span>' + esc(p.puesto || p.rol) + ' · ' + (p.confianza === 'SI' ? 'horario libre' : dias ? dias + ' días' : 'sin horario') + '</span>' +
       '<div>' + esc(p.nombre) + '</div></div>' +
+      (p.activo === 'SI' && !(r.notifs || {})[String(p.correo).toLowerCase()] ? pill(['Sin notificaciones', 'p-warn']) : '') +
       (p.confianza === 'SI' ? pill(['Confianza', 'p-neutral']) : '') +
       (p.rol !== 'COLABORADOR' ? pill([p.rol === 'DIRECTOR' ? 'Dirección' : 'Gerencia', 'p-info']) : '') + '</div></div>';
   }
@@ -1748,6 +1749,8 @@ function irA(ver) {
   if (ver === 'tareas') return pantallaTareas();
   if (ver === 'avisos') return pantallaAvisos();
   if (ver === 'actas') return pantallaActasMias();
+  if (ver === 'checador' && estado.yo) return pantallaChecador();
+  if (ver === 'equipo' && estado.yo && estado.yo.perfil.admin) return pantallaTablero();
   if (ver === 'chat:general') return pantallaCanal('general', 'Equipo · todos');
   if (ver.indexOf('chat:') === 0) return pantallaChat();
   return inicio();
