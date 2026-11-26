@@ -1426,6 +1426,169 @@ async function actualizarKpi() {
   alertar(r.ok ? 'Datos actualizados.' : 'Algunos días no se pudieron traer: ' + (r.errores || []).join(' · '), r.ok ? 'a-ok' : 'a-err');
 }
 
+/* ---------- documentos: expediente de cada colaboradora ---------- */
+var EDOC = {
+  COMPLETO: ['Completo', 'p-ok'], POR_VENCER: ['Por vencer', 'p-warn'], POR_REVISAR: ['Por revisar', 'p-info'],
+  VENCIDO: ['Vencido', 'p-crit'], RECHAZADO: ['Rechazado', 'p-crit'], FALTA: ['Falta', 'p-neutral'],
+  APROBADO: ['Aprobado', 'p-ok'], PENDIENTE: ['Por revisar', 'p-info']
+};
+function listaExpediente(e, admin, correo) {
+  var c = encodeURIComponent(correo || '');
+  return '<div class="card">' + e.requeridos.map(function (r) {
+    var ult = r.docs[0];
+    var acciones = r.docs.map(function (d) {
+      return '<div class="r"><span>' + pill(EDOC[d.estado] || [d.estado, 'p-neutral']) + ' <span class="mini">' + esc(fechaHora(d.subido)) + ' · subió ' + esc(d.subio) +
+        (d.vence ? ' · vence ' + esc(fechaCorta(d.vence)) : '') + (d.motivo ? '<br>Motivo: ' + esc(d.motivo) : '') + '</span></span>' +
+        '<button class="ver-foto" onclick="verDoc(\'' + d.id + '\')">Ver</button></div>' +
+        (admin && d.estado === 'PENDIENTE' ? '<div style="display:flex;gap:8px;margin:4px 0 8px">' +
+          '<button class="b-dark" style="margin:0" onclick="revisarDoc(\'' + d.id + '\',true,' + (r.pide_vence ? 1 : 0) + ',\'' + c + '\')">Aprobar</button>' +
+          '<button class="b-ghost" style="margin:0" onclick="revisarDoc(\'' + d.id + '\',false,0,\'' + c + '\')">Rechazar</button></div>' : '');
+    }).join('');
+    return '<div class="persona"><button onclick="this.parentNode.classList.toggle(\'abierto\')"><span class="t"><span class="n">' + esc(r.nombre) + '</span>' +
+      '<span class="c">' + (r.vence ? 'Vigente hasta ' + esc(fechaCorta(r.vence)) : r.docs.length ? r.docs.length + ' archivo' + (r.docs.length > 1 ? 's' : '') : 'Sin archivo') + '</span></span>' +
+      pill(EDOC[r.estado]) + '</button><div class="det">' + acciones +
+      '<button class="b-ghost" style="margin:6px 0" onclick="subirDoc(\'' + r.tipo_id + '\',\'' + c + '\')">' + (ult ? 'Subir otra versión' : 'Subir') + '</button></div></div>';
+  }).join('') + '</div>' +
+  (e.otros.length ? '<div class="sub-t">Otros documentos</div><div class="card">' + e.otros.map(function (d) {
+    return '<div class="r"><span><b>' + esc(d.tipo) + '</b> ' + pill(EDOC[d.estado] || [d.estado, 'p-neutral']) + '<br><span class="mini">' + esc(fechaHora(d.subido)) + '</span></span>' +
+      '<button class="ver-foto" onclick="verDoc(\'' + d.id + '\')">Ver</button></div>';
+  }).join('') + '</div>' : '') +
+  '<button class="b-ghost" onclick="subirDoc(\'OTRO\',\'' + c + '\')">Subir otro documento</button>';
+}
+async function pantallaDocs() {
+  encabezado('Mis documentos', ''); cargando();
+  var r = await enviar({ accion: 'docs_mios' });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div>' + volver());
+  estado.docs = { ctx: 'mio', r: r };
+  encabezado('Mis documentos', 'Expediente al ' + r.pct + '%');
+  pintar('<div class="tira">' + datoFijo(r.completos + '/' + r.total, 'documentos completos', r.pct === 100 ? 'd-ok' : 'd-warn') +
+    datoFijo(r.por_revisar, 'por revisar') + '</div>' +
+    '<p class="mini">Toma una foto clara o sube el PDF. Gerencia lo revisa y te avisa. Sólo tú y dirección/gerencia pueden ver tus documentos.</p>' +
+    listaExpediente(r, false, '') + volver());
+}
+async function pantallaDocsEquipo() {
+  encabezado('Expedientes del personal', ''); cargando();
+  var r = await enviar({ accion: 'docs_equipo' });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div>' + volver());
+  estado.docsEq = r;
+  pintar('<div class="card">' + r.personas.map(function (p) {
+    return '<div class="lista"><div class="item item-abre" onclick="pantallaDocsPersona(\'' + encodeURIComponent(p.correo) + '\')"><div class="l">' +
+      '<span>' + esc(p.puesto || '') + ' · ' + p.completos + '/' + p.total + (p.faltan ? ' · faltan ' + p.faltan : '') + (p.por_vencer ? ' · ' + p.por_vencer + ' por vencer' : '') + '</span>' +
+      '<div>' + esc(p.nombre) + '</div></div>' +
+      (p.por_revisar ? pill([p.por_revisar + ' por revisar', 'p-info']) : '') +
+      '<span class="mono" style="color:' + (p.pct === 100 ? 'var(--ok)' : p.pct >= 70 ? 'var(--warn)' : 'var(--crit)') + '">' + p.pct + '%</span></div></div>';
+  }).join('') + '</div>' +
+  '<button class="b-ghost" onclick="pantallaDocTipos()">Documentos que pide cada puesto</button>' + volver());
+}
+async function pantallaDocsPersona(c) {
+  var correo = decodeURIComponent(c);
+  encabezado('Expediente', ''); cargando();
+  var r = await enviar({ accion: 'docs_persona', correo: correo });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div>' + volver());
+  estado.docs = { ctx: 'persona', correo: correo, r: r };
+  encabezado(r.persona.nombre, (r.persona.puesto || '') + ' · ' + r.pct + '%');
+  pintar(listaExpediente(r, true, correo) +
+    (r.actas.length ? '<div class="sub-t">Actas administrativas</div><div class="card">' + r.actas.map(function (a) {
+      return '<div class="r"><span><b>' + esc(a.folio) + '</b> · ' + esc(a.tipo || '') + '<br><span class="mini">' + esc(fechaCorta(a.fecha)) + ' · ' + esc(a.estado) + (a.firmada ? ' · firmada' : '') + '</span></span></div>';
+    }).join('') + '</div>' : '') +
+    '<button class="b-ghost" onclick="pantallaDocsEquipo()">Volver a expedientes</button>');
+}
+function recargarDocs() { return estado.docs && estado.docs.ctx === 'persona' ? pantallaDocsPersona(encodeURIComponent(estado.docs.correo)) : pantallaDocs(); }
+function subirDoc(tipoId, c) {
+  var correo = decodeURIComponent(c || ''), r = estado.docs.r;
+  var t = r.tipos.filter(function (x) { return x.id === tipoId; })[0];
+  encabezado(t ? t.nombre : 'Otro documento', correo ? (r.persona || {}).nombre || '' : 'Mis documentos');
+  pintar('<div class="card">' +
+    (t ? '' : '<div class="campo"><label>¿Qué documento es?</label><input id="dNombre" placeholder="Ej. carta de recomendación"></div>') +
+    '<div class="campo"><label>Archivo (foto o PDF)</label><input id="dArchivo" type="file" accept="image/*,application/pdf"></div>' +
+    (!t || t.vence === 'SI' ? '<div class="campo"><label>Fecha de vencimiento' + (t ? '' : ' (si tiene)') + '</label><input id="dVence" type="date"></div>' : '') +
+    '<p class="mini">Si es foto, que se lea completo y sin reflejos. El INE se sube por ambos lados (dos fotos o un PDF).</p></div>' +
+    '<button class="b-dark" id="dBtn" onclick="enviarDoc(\'' + tipoId + '\',\'' + c + '\')">Subir</button>' +
+    '<button class="b-ghost" onclick="recargarDocs()">Cancelar</button>');
+}
+function leerArchivo(f) {
+  return new Promise(function (ok, mal) {
+    var fr = new FileReader();
+    fr.onload = function () {
+      if (!/^image\//.test(f.type)) return ok(fr.result);
+      var img = new Image();
+      img.onload = function () {
+        var max = 2000, k = Math.min(1, max / Math.max(img.width, img.height));
+        var cv = document.createElement('canvas'); cv.width = Math.round(img.width * k); cv.height = Math.round(img.height * k);
+        cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+        ok(cv.toDataURL('image/jpeg', 0.85));
+      };
+      img.onerror = function () { ok(fr.result); };
+      img.src = fr.result;
+    };
+    fr.onerror = mal;
+    fr.readAsDataURL(f);
+  });
+}
+async function enviarDoc(tipoId, c) {
+  var f = $('dArchivo').files[0];
+  if (!f) return alertar('Elige el archivo.', 'a-err');
+  if (f.size > 10 * 1024 * 1024 && f.type === 'application/pdf') return alertar('El PDF pesa más de 10 MB.', 'a-err');
+  $('dBtn').disabled = true; $('dBtn').textContent = 'Subiendo…';
+  try {
+    var data = await leerArchivo(f);
+    var r = await enviar({ accion: 'doc_subir', doc: { tipo_id: tipoId === 'OTRO' ? '' : tipoId, tipo_nombre: $('dNombre') ? $('dNombre').value : '',
+      data: data, nombre_archivo: f.name, vence: $('dVence') ? $('dVence').value : '', correo: decodeURIComponent(c || '') } });
+    if (!r.ok) { $('dBtn').disabled = false; $('dBtn').textContent = 'Subir'; return alertar(r.error, 'a-err'); }
+    await recargarDocs();
+    alertar(estado.yo.perfil.admin ? 'Documento guardado en el expediente.' : 'Listo. Gerencia lo revisará y te avisa.', 'a-ok');
+  } catch (e) { $('dBtn').disabled = false; $('dBtn').textContent = 'Subir'; alertar('No se pudo subir: ' + (e.message || e), 'a-err'); }
+}
+async function verDoc(id) {
+  alertar('Abriendo…', 'a-neutral');
+  var r = await enviar({ accion: 'doc_ver', id: id });
+  if (!r.ok) return alertar(r.error, 'a-err');
+  var blob = await (await fetch(r.data)).blob(), url = URL.createObjectURL(blob);
+  var cont = r.mime === 'application/pdf' ? '<iframe src="' + url + '" style="width:100%;height:70vh;border:1px solid var(--rule);border-radius:8px"></iframe>'
+    : '<img src="' + url + '" style="width:100%;border-radius:8px;border:1px solid var(--rule)">';
+  var prev = $('app').innerHTML;
+  estado._docPrev = prev;
+  encabezado(r.nombre || 'Documento', '');
+  pintar(cont + '<a class="b-ghost" style="display:block;text-align:center;text-decoration:none;margin-top:10px" href="' + url + '" download="' + esc(r.nombre || 'documento') + '">Descargar</a>' +
+    '<button class="b-dark" onclick="recargarDocs()">Volver</button>');
+}
+async function revisarDoc(id, aprobar, pideVence, c) {
+  var motivo = '', vence = '';
+  if (!aprobar) { motivo = prompt('¿Por qué se rechaza? (lo verá la colaboradora)'); if (!motivo) return; }
+  if (aprobar && pideVence) vence = prompt('Fecha de vencimiento (AAAA-MM-DD). Déjalo vacío si ya la puso ella.', '') || '';
+  var r = await enviar({ accion: 'doc_revisar', id: id, aprobar: aprobar, motivo: motivo, vence: vence.trim() });
+  if (!r.ok) return alertar(r.error, 'a-err');
+  await recargarDocs(); alertar(aprobar ? 'Aprobado.' : 'Rechazado. Le llegó el aviso.', 'a-ok');
+}
+async function pantallaDocTipos() {
+  encabezado('Documentos por puesto', ''); cargando();
+  var r = await enviar({ accion: 'docs_equipo' });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div>' + volver());
+  estado.docsEq = r;
+  pintar('<p class="mini">«TODOS» = lo pide a todo el personal. Para ciertos puestos, escríbelos separados por coma, tal como están en Personal (' + esc(r.puestos.join(', ')) + ').</p>' +
+    '<div class="card">' + r.tipos.map(function (t, i) {
+      return '<div class="lista"><div class="item item-abre" onclick="editarDocTipo(' + i + ')"><div class="l"><span>' + esc(t.puestos) + (t.vence === 'SI' ? ' · vence' : '') + '</span>' +
+        '<div>' + esc(t.nombre) + '</div></div></div></div>';
+    }).join('') + '</div>' +
+    '<button class="b-dark" onclick="editarDocTipo(-1)">Agregar documento</button>' +
+    '<button class="b-ghost" onclick="pantallaDocsEquipo()">Volver a expedientes</button>');
+}
+function editarDocTipo(i) {
+  var t = i >= 0 ? estado.docsEq.tipos[i] : { id: '', nombre: '', puestos: 'TODOS', vence: 'NO' };
+  encabezado(i >= 0 ? t.nombre : 'Nuevo documento', 'Documentos por puesto');
+  pintar('<div class="card"><div class="campo"><label>Nombre</label><input id="tNombre" value="' + esc(t.nombre) + '"></div>' +
+    '<div class="campo"><label>Puestos que lo deben tener</label><input id="tPuestos" value="' + esc(t.puestos) + '"></div>' +
+    '<label class="check"><input type="checkbox" id="tVence"' + (t.vence === 'SI' ? ' checked' : '') + '> Tiene fecha de vencimiento</label></div>' +
+    '<button class="b-dark" onclick="guardarDocTipo(\'' + esc(t.id) + '\',false)">Guardar</button>' +
+    (i >= 0 ? '<button class="b-ghost" onclick="guardarDocTipo(\'' + esc(t.id) + '\',true)">Ya no pedir este documento</button>' : '') +
+    '<button class="b-ghost" onclick="pantallaDocTipos()">Cancelar</button>');
+}
+async function guardarDocTipo(id, quitar) {
+  var r = await enviar({ accion: 'doc_tipo_guardar', tipo: { id: id, nombre: $('tNombre').value, puestos: $('tPuestos').value, vence: $('tVence').checked ? 'SI' : 'NO', quitar: quitar } });
+  if (!r.ok) return alertar(r.error, 'a-err');
+  await pantallaDocTipos(); alertar('Guardado.', 'a-ok');
+}
+
 function datoFijo(n, e, cls) { return '<div class="dato ' + (cls || '') + '"><span class="n">' + esc(n) + '</span><span class="e">' + e + '</span></div>'; }
 
 function exportarCSV() {
@@ -1795,6 +1958,9 @@ async function portada(aviso) {
     (s.actas ? '<button class="baldosa' + (s.actas_pendientes ? ' urge' : '') + '" onclick="pantallaActasMias()">Mis actas' +
       badge(s.actas_pendientes, 'p-crit') + '<span class="q">' + (s.actas_pendientes ? 'Pendiente de acuse' : 'Historial') + '</span></button>' : '') +
     '<button class="baldosa" onclick="pantallaMias()">Mi asistencia<span class="q">Últimos 15 días</span></button>' +
+    '<button class="baldosa' + (s.docs && s.docs.faltan ? ' urge' : '') + '" onclick="pantallaDocs()">Mis documentos' +
+      (s.docs && s.docs.faltan ? badge(s.docs.faltan + ' faltan', 'p-warn') : '') +
+      '<span class="q">' + (s.docs ? 'Expediente al ' + s.docs.pct + '%' : 'Tu expediente') + '</span></button>' +
     (s.kpis ? '<button class="baldosa" onclick="pantallaKPIs()">Mis indicadores<span class="q">Cumplimiento para tu bono</span></button>' : '') +
     '</div>';
 
@@ -1811,6 +1977,8 @@ async function portada(aviso) {
       '<button class="baldosa" onclick="pantallaActasAdmin()">Actas administrativas' + badge(s.equipo && s.equipo.actas_abiertas, 'p-warn') +
         '<span class="q">Registro y seguimiento</span></button>' +
       '<button class="baldosa" onclick="pantallaReporte()">Reporte para nómina<span class="q">Quincena</span></button>' +
+      '<button class="baldosa" onclick="pantallaDocsEquipo()">Expedientes del personal' + badge(s.equipo && s.equipo.docs_por_revisar, 'p-warn') +
+        '<span class="q">' + (s.equipo && s.equipo.docs_por_revisar ? 'Documentos por revisar' : 'Documentos de cada quien') + '</span></button>' +
       '<button class="baldosa" onclick="pantallaKPIsEquipo()">Indicadores (KPI)<span class="q">Cumplimiento por puesto · bonos</span></button>' +
       '<button class="baldosa" onclick="pantallaChecadasDia()">Checadas del día<span class="q">Con foto y ubicación</span></button>' +
       '<button class="baldosa" onclick="pantallaPersonal()">Personal<span class="q">Altas y horarios</span></button>' +
@@ -1948,6 +2116,8 @@ function irA(ver) {
   if (ver === 'avisos') return pantallaAvisos();
   if (ver === 'actas') return pantallaActasMias();
   if (ver === 'correcciones') return pantallaCorrecciones();
+  if (ver === 'docs') return pantallaDocs();
+  if (ver === 'docs_equipo' && estado.yo && estado.yo.perfil.admin) return pantallaDocsEquipo();
   if (ver === 'checador' && estado.yo) return pantallaChecador();
   if (ver === 'equipo' && estado.yo && estado.yo.perfil.admin) return pantallaTablero();
   if (ver === 'chat:general') return pantallaCanal('general', 'Equipo · todos');
