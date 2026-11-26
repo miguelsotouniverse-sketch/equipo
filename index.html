@@ -1309,6 +1309,123 @@ async function responderCorreccion(i, acepta) {
   alertar(acepta ? 'Gracias, quedó confirmada.' : 'Listo, gerencia recibió tu respuesta.', 'a-ok');
 }
 
+/* ---------- KPI: indicadores de cumplimiento ---------- */
+function colorPct(p, meta) { return p == null ? 'var(--ink-3)' : p >= meta ? 'var(--ok)' : p >= meta - 10 ? 'var(--warn)' : 'var(--crit)'; }
+function barraKpi(p, meta) {
+  var w = p == null ? 0 : Math.max(2, Math.min(100, p));
+  return '<div style="position:relative;height:8px;background:var(--rule);border-radius:4px;margin:8px 0 4px">' +
+    '<div style="width:' + w + '%;height:100%;background:' + colorPct(p, meta) + ';border-radius:4px"></div>' +
+    '<div title="meta" style="position:absolute;top:-3px;left:' + meta + '%;width:2px;height:14px;background:var(--ink)"></div></div>';
+}
+function periodoChips(fn, desde) {
+  var q0 = quincena(0), q1 = quincena(-1);
+  return '<div class="chips"><button class="chip' + (desde === q0[0] ? ' on' : '') + '" onclick="' + fn + '(\'' + q0[0] + '\',\'' + q0[1] + '\')">Esta quincena</button>' +
+    '<button class="chip' + (desde === q1[0] ? ' on' : '') + '" onclick="' + fn + '(\'' + q1[0] + '\',\'' + q1[1] + '\')">Quincena pasada</button></div>';
+}
+async function pantallaKPIs(desde, hasta) {
+  encabezado('Mis indicadores', ''); cargando();
+  var r = await enviar({ accion: 'kpi_mios', desde: desde, hasta: hasta });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div>' + volver());
+  encabezado('Mis indicadores', fechaCorta(r.desde) + ' – ' + fechaCorta(r.hasta));
+  if (!r.kpis.length) return pintar('<p class="sub centro">Todavía no tienes indicadores asignados.</p>' + volver());
+  pintar(periodoChips('pantallaKPIs', r.desde) +
+    '<div class="tira">' + datoFijo(r.puntaje == null ? '—' : r.puntaje + '%', 'cumplimiento ponderado', r.puntaje == null ? '' : r.puntaje >= 95 ? 'd-ok' : r.puntaje >= 85 ? 'd-warn' : 'd-crit') +
+    datoFijo(r.dias_trabajados, 'días trabajados') + '</div>' +
+    r.kpis.map(function (k) {
+      var pend = (k.pendientes || []);
+      return '<div class="card"><div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px">' +
+        '<h3 style="margin:0">' + esc(k.nombre) + '</h3><span class="mono" style="font-size:1.5rem;color:' + colorPct(k.pct, k.meta) + '">' + (k.pct == null ? '—' : k.pct + '%') + '</span></div>' +
+        barraKpi(k.pct, k.meta) +
+        '<p class="mini" style="margin:0">' + k.cumplidas + ' de ' + k.revisadas + ' · meta ' + k.meta + '% · peso en el bono ' + k.peso + '%' +
+          (k.en_plazo ? ' · <b>' + k.en_plazo + ' en plazo</b> todavía' : '') + '</p>' +
+        '<p class="mini" style="margin:6px 0 0;color:var(--ink-3)">' + esc(k.descripcion) + '</p>' +
+        (pend.length ? '<details class="mas" style="margin-top:8px"><summary>' + pend.length + ' por resolver</summary>' +
+          pend.map(function (x) {
+            return '<div class="r"><span><b>' + esc(fechaCorta(x.dia)) + '</b> · ' + esc(x.paciente) + (x.enPlazo ? ' ' + pill(['En plazo hasta ' + fechaCorta(x.vence), 'p-warn']) : '') +
+              '<br><span class="mini">' + esc(x.que) + (x.detalle ? ' · ' + esc(x.detalle) : '') + (String(x.detalle || '').indexOf(x.lugar) === 0 ? '' : ' · ' + esc(x.lugar)) + '</span></span></div>';
+          }).join('') + '</details>' : '') + '</div>';
+    }).join('') +
+    '<p class="mini">Sólo cuentan los días que checaste llegada. Lo «en plazo» todavía se puede completar y no te baja el porcentaje. ' +
+    'Datos de Augusta' + (r.actualizado ? ', actualizados ' + esc(fechaHora(r.actualizado)) : '') + '.</p>' + volver());
+}
+async function pantallaKPIsEquipo(desde, hasta) {
+  encabezado('Indicadores del equipo', ''); cargando();
+  var r = await enviar({ accion: 'kpi_equipo', desde: desde, hasta: hasta });
+  if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div>' + volver());
+  estado.kpiEq = r;
+  encabezado('Indicadores del equipo', fechaCorta(r.desde) + ' – ' + fechaCorta(r.hasta));
+  var cols = r.catalogo.map(function (k) { return k.id; });
+  var filasT = r.personas.map(function (p) {
+    return '<tr><td>' + esc(p.nombre) + '<br><span class="mini">' + esc(p.puesto || '') + ' · ' + p.dias_trabajados + ' días</span></td>' +
+      cols.map(function (c) {
+        var k = p.kpis.filter(function (x) { return x.kpi === c; })[0];
+        if (!k) return '<td class="mini">—</td>';
+        return '<td style="color:' + colorPct(k.pct, k.meta) + '">' + (k.pct == null ? 'sin dato' : k.pct + '%') + '<br><span class="mini">' + k.cumplidas + '/' + k.revisadas + '</span></td>';
+      }).join('') +
+      '<td><b>' + (p.puntaje == null ? '—' : p.puntaje + '%') + '</b></td></tr>';
+  }).join('');
+  var asig = r.asignaciones.map(function (a) {
+    var k = r.catalogo.filter(function (x) { return x.id === a.kpi; })[0] || { nombre: a.kpi };
+    var quien = a.correo ? ((r.personal.filter(function (p) { return p.correo.toLowerCase() === a.correo; })[0] || {}).nombre || a.correo) : 'Puesto: ' + a.puesto;
+    return '<div class="lista"><div class="item"><div class="l"><span>' + esc(quien) + '</span><div>' + esc(k.nombre) + '</div>' +
+      '<span class="mini">Meta ' + a.meta + '% · peso ' + a.peso + '% · ' + (a.alcance === 'TODO' ? 'todos los lugares' : esc(a.alcance)) + '</span></div>' +
+      '<button class="b-ghost" style="width:auto;margin:0;padding:6px 12px" onclick="quitarAsig(\'' + a.id + '\')">Quitar</button></div></div>';
+  }).join('');
+  pintar(periodoChips('pantallaKPIsEquipo', r.desde) +
+    '<div class="card envuelve">' + (filasT ? '<table class="tabla"><thead><tr><th>Persona</th>' +
+      r.catalogo.map(function (k) { return '<th>' + esc(k.nombre) + '</th>'; }).join('') + '<th>Ponderado</th></tr></thead><tbody>' + filasT + '</tbody></table>' :
+      '<p class="sub">Nadie tiene indicadores asignados todavía.</p>') +
+    '<p class="mini" style="margin:10px 0 0">A cada persona sólo se le cuentan los días que checó llegada. Datos de Augusta' +
+      (r.actualizado ? ', actualizados ' + esc(fechaHora(r.actualizado)) : '') + '; se actualizan solos cada noche.</p></div>' +
+    '<div class="sub-t">Asignaciones</div><div class="card">' + (asig || '<p class="sub">Sin asignaciones.</p>') + '</div>' +
+    '<button class="b-dark" onclick="nuevaAsig()">Asignar indicador</button>' +
+    '<button class="b-ghost" onclick="actualizarKpi()">Traer datos de Augusta ahora (últimos 3 días)</button>' + volver());
+}
+function nuevaAsig() {
+  var r = estado.kpiEq;
+  encabezado('Asignar indicador', '');
+  pintar('<div class="card">' +
+    '<div class="campo"><label>Indicador</label><select id="aKpi" onchange="lugaresAsig()">' + r.catalogo.map(function (k) { return '<option value="' + k.id + '">' + esc(k.nombre) + '</option>'; }).join('') + '</select></div>' +
+    '<div class="campo"><label>¿A quién?</label><select id="aQuien">' +
+      '<optgroup label="Por puesto (a todos los de ese puesto)">' + r.puestos.map(function (p) { return '<option value="P|' + esc(p) + '">' + esc(p) + '</option>'; }).join('') + '</optgroup>' +
+      '<optgroup label="Sólo a una persona">' + r.personal.map(function (p) { return '<option value="C|' + esc(p.correo) + '">' + esc(p.nombre) + '</option>'; }).join('') + '</optgroup></select></div>' +
+    '<div class="dos"><div class="campo"><label>Meta (%)</label><input id="aMeta" type="number" min="1" max="100" value="100"></div>' +
+    '<div class="campo"><label>Peso en el bono (%)</label><input id="aPeso" type="number" min="0" max="100" value="50"></div></div>' +
+    '<div class="campo"><label>Qué lugares cuenta</label><div id="aLugares"></div></div>' +
+    '<p class="mini">Si un puesto y una persona tienen el mismo indicador, manda el de la persona.</p></div>' +
+    '<button class="b-dark" onclick="guardarAsig()">Guardar</button><button class="b-ghost" onclick="pantallaKPIsEquipo()">Cancelar</button>');
+  lugaresAsig();
+}
+function lugaresAsig() {
+  var k = estado.kpiEq.catalogo.filter(function (x) { return x.id === $('aKpi').value; })[0];
+  $('aLugares').innerHTML = k.lugares.map(function (l) {
+    return '<label class="check"><input type="checkbox" class="aLug" value="' + esc(l) + '" checked> ' + esc(l) + '</label>';
+  }).join('');
+}
+async function guardarAsig() {
+  var q = $('aQuien').value.split('|'), lug = [].slice.call(document.querySelectorAll('.aLug'));
+  var marcados = lug.filter(function (x) { return x.checked; }).map(function (x) { return x.value; });
+  if (!marcados.length) return alertar('Marca al menos un lugar.', 'a-err');
+  var a = { kpi: $('aKpi').value, meta: $('aMeta').value, peso: $('aPeso').value,
+            alcance: marcados.length === lug.length ? 'TODO' : marcados.join(',') };
+  if (q[0] === 'C') a.correo = q[1]; else a.puesto = q[1];
+  var r = await enviar({ accion: 'kpi_asig_guardar', asig: a });
+  if (!r.ok) return alertar(r.error, 'a-err');
+  await pantallaKPIsEquipo(); alertar('Indicador asignado.', 'a-ok');
+}
+async function quitarAsig(id) {
+  var r = await enviar({ accion: 'kpi_asig_quitar', id: id });
+  if (!r.ok) return alertar(r.error, 'a-err');
+  await pantallaKPIsEquipo(); alertar('Asignación quitada.', 'a-ok');
+}
+async function actualizarKpi() {
+  alertar('Pidiendo los datos a Augusta… tarda alrededor de un minuto.', 'a-neutral');
+  var d = []; for (var i = 0; i < 3; i++) { var f = new Date(horaServidor().getTime() - i * 864e5); d.push(f.toLocaleDateString('en-CA', { timeZone: 'America/Mexico_City' })); }
+  var r = await enviar({ accion: 'kpi_sincronizar', dias: d });
+  await pantallaKPIsEquipo();
+  alertar(r.ok ? 'Datos actualizados.' : 'Algunos días no se pudieron traer: ' + (r.errores || []).join(' · '), r.ok ? 'a-ok' : 'a-err');
+}
+
 function datoFijo(n, e, cls) { return '<div class="dato ' + (cls || '') + '"><span class="n">' + esc(n) + '</span><span class="e">' + e + '</span></div>'; }
 
 function exportarCSV() {
@@ -1678,6 +1795,7 @@ async function portada(aviso) {
     (s.actas ? '<button class="baldosa' + (s.actas_pendientes ? ' urge' : '') + '" onclick="pantallaActasMias()">Mis actas' +
       badge(s.actas_pendientes, 'p-crit') + '<span class="q">' + (s.actas_pendientes ? 'Pendiente de acuse' : 'Historial') + '</span></button>' : '') +
     '<button class="baldosa" onclick="pantallaMias()">Mi asistencia<span class="q">Últimos 15 días</span></button>' +
+    (s.kpis ? '<button class="baldosa" onclick="pantallaKPIs()">Mis indicadores<span class="q">Cumplimiento para tu bono</span></button>' : '') +
     '</div>';
 
   var dir = '';
@@ -1693,6 +1811,7 @@ async function portada(aviso) {
       '<button class="baldosa" onclick="pantallaActasAdmin()">Actas administrativas' + badge(s.equipo && s.equipo.actas_abiertas, 'p-warn') +
         '<span class="q">Registro y seguimiento</span></button>' +
       '<button class="baldosa" onclick="pantallaReporte()">Reporte para nómina<span class="q">Quincena</span></button>' +
+      '<button class="baldosa" onclick="pantallaKPIsEquipo()">Indicadores (KPI)<span class="q">Cumplimiento por puesto · bonos</span></button>' +
       '<button class="baldosa" onclick="pantallaChecadasDia()">Checadas del día<span class="q">Con foto y ubicación</span></button>' +
       '<button class="baldosa" onclick="pantallaPersonal()">Personal<span class="q">Altas y horarios</span></button>' +
       '<button class="baldosa" onclick="pantallaSedes()">Sedes<span class="q">Ubicación y radio</span></button>' +
