@@ -1652,17 +1652,21 @@ async function pantallaAjustes(fecha) {
   if (!r.ok) return pintar('<div class="aviso a-err">' + esc(r.error) + '</div><button class="b-ghost" onclick="inicio()">Volver</button>');
   estado.ajustes = r;
   encabezado(r.fecha === fechaManana() ? 'Horarios de mañana' : 'Horarios del día', fechaLarga(r.fecha));
-  var estadoPub = r.publicado ?
-    '<div class="aviso a-ok">✓ Publicado por ' + esc(r.publicado.autor) + ' · ' + esc(fechaHora(r.publicado.ts)) +
-      '. Si cambias a alguien, le llega un correo con su nuevo horario.</div>' :
-    '<div class="aviso a-warn"><b>Sin publicar.</b> Revisa el horario de cada quien y toca «Publicar horarios»: ' +
-      'a cada persona le llega su horario por correo y lo ve en su app.</div>';
+  // Cada jefatura ve primero a su gente (la de su sede o la que tiene asignada).
+  var otras = r.personas.filter(function (p) { return !p.mia; }).length;
+  var visibles = r.personas.filter(function (p) { return p.mia || estado.ajTodas; });
+  var sinPub = visibles.filter(function (p) { return !p.publicado; });
+  var estadoPub = !visibles.length ? '' : !sinPub.length ?
+    '<div class="aviso a-ok">✓ Todo publicado. Si cambias a alguien, le llega un aviso con su nuevo horario.</div>' :
+    '<div class="aviso a-warn"><b>' + sinPub.length + (sinPub.length === 1 ? ' persona sin publicar' : ' personas sin publicar') + '.</b> ' +
+      'Revisa su horario y publícalo: a cada quien le llega su horario y lo ve en su app. Puedes publicar a todas o una por una.</div>';
   function opcSedes(sel) {
     return r.sedes.map(function (x) {
       return '<option value="' + esc(x.id) + '"' + (x.id === sel ? ' selected' : '') + '>Llega a ' + esc(x.nombre) + '</option>';
     }).join('');
   }
   var filas = r.personas.map(function (p, i) {
+    if (!p.mia && !estado.ajTodas) return '';
     var val = p.ajuste ? p.ajuste.horario : p.base;
     var sedeSel = (p.ajuste && p.ajuste.sede) || p.sede_base;
     var desc = p.ajuste && !p.ajuste.horario;
@@ -1670,9 +1674,12 @@ async function pantallaAjustes(fecha) {
       '<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px;padding:8px 4px 6px">' +
       '<span><span style="font-size:.95rem">' + esc(p.nombre) + '</span>' +
       '<span class="mini mono" style="display:block">' + esc(p.puesto || '') + ' · base ' + esc(p.base || 'descanso') + '</span>' +
+      (estado.ajTodas && p.responsable ? '<span class="mini mono" style="display:block">Asigna: ' + esc(p.responsable) + '</span>' : '') +
       '<span class="mini mono" style="display:block;color:' + (p.semana_min > r.semana_max_min ? 'var(--crit)' : 'var(--ink-3)') + '">Semana: ' +
         hm(p.semana_min) + ' de ' + hm(r.semana_max_min) + ' h' + (p.semana_min > r.semana_max_min ? ' · se pasa del máximo' : '') + '</span></span>' +
-      (p.ajuste ? pill(['Ajustado' + (p.ajuste.autor ? ' · ' + p.ajuste.autor.split(' ')[0] : ''), 'p-warn']) : '') + '</div>' +
+      '<span style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">' +
+        (p.publicado ? pill(['Publicado', 'p-ok']) : pill(['Sin publicar', 'p-neutral'])) +
+        (p.ajuste ? pill(['Ajustado' + (p.ajuste.autor ? ' · ' + p.ajuste.autor.split(' ')[0] : ''), 'p-warn']) : '') + '</span></div>' +
       '<div style="display:grid;grid-template-columns:auto 1fr auto;gap:7px;align-items:center;padding:0 4px">' +
       '<button class="b-chico" style="background:var(--surface);color:var(--ink);border:1px solid var(--rule)" onclick="mover(' + i + ',-30)" ' + (r.editable ? '' : 'disabled') + '>−30′</button>' +
       '<input id="aj' + i + '" value="' + esc(desc ? '' : val) + '" placeholder="descansa" inputmode="numeric" style="text-align:center;font-family:\'IBM Plex Mono\',monospace" ' + (r.editable ? '' : 'disabled') + '>' +
@@ -1680,6 +1687,7 @@ async function pantallaAjustes(fecha) {
       '<div style="padding:7px 4px 0"><select id="ajs' + i + '" ' + (r.editable ? '' : 'disabled') + '>' + opcSedes(sedeSel) + '</select></div>' +
       (p.ajuste ? '<p class="mini" style="margin:6px 4px 0">' + (p.ajuste.motivo ? '«' + esc(p.ajuste.motivo) + '» · ' : '') +
         (r.editable ? '<a href="#" onclick="volverBase(' + i + ');return false" style="color:var(--accent-deep)">volver a su horario base</a>' : '') + '</p>' : '') +
+      (r.editable && !p.publicado ? '<button class="b-chico" style="margin:8px 4px 0;background:var(--surface);color:var(--ink);border:1px solid var(--rule)" onclick="guardarAjustes([\'' + esc(p.correo) + '\'])">Publicar sólo este horario</button>' : '') +
       '</div>';
   }).join('');
   pintar('<div class="campo"><label>Día</label><input type="date" value="' + r.fecha + '" onchange="pantallaAjustes(this.value)"></div>' +
@@ -1688,10 +1696,14 @@ async function pantallaAjustes(fecha) {
     '<div class="aviso a-neutral">Mueve sólo a quien cambia. Formato 07:00-16:00; vacío = descansa ese día. La sede es dónde debe <b>llegar</b>; la comida y la salida valen en cualquier sede.</div>' +
     (r.editable && r.personas.length > 1 ? '<div class="campo"><label>Todos llegan a</label><select onchange="todosA(this.value)"><option value="">— elegir para mover a todos —</option>' +
       r.sedes.map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.nombre) + '</option>'; }).join('') + '</select></div>' : '') +
-    '<div class="card">' + (filas || '<p class="sub">No hay personal con horario.</p>') + '</div>' +
-    (r.editable ? '<div class="campo"><label>Motivo (opcional)</label><input id="ajMotivo" placeholder="Ej. cirugía a las 7:30, consulta extendida"></div>' +
-      (r.publicado ? '<button class="b-dark" onclick="guardarAjustes(false)">Guardar cambios</button>' :
-        '<button class="b-dark" onclick="guardarAjustes(true)">Publicar horarios</button>') : '') +
+    '<div class="card">' + (filas.replace(/\s/g, '') ? filas : '<p class="sub">' + (otras ? 'No tienes personas asignadas con horario este día.' : 'No hay personal con horario.') + '</p>') + '</div>' +
+    (otras ? '<button class="b-ghost" onclick="estado.ajTodas=!estado.ajTodas;pantallaAjustes(estado.ajustes.fecha)">' +
+      (estado.ajTodas ? 'Ver sólo a mi gente' : 'Ver también a las de otra jefatura (' + otras + ')') + '</button>' : '') +
+    (r.editable && visibles.length ? '<div class="campo"><label>Motivo (opcional)</label><input id="ajMotivo" placeholder="Ej. cirugía a las 7:30, consulta extendida"></div>' +
+      (sinPub.length ? '<button class="b-dark" onclick="guardarAjustes(estado.ajustes.personas.filter(function(p){return (p.mia||estado.ajTodas)&&!p.publicado}).map(function(p){return p.correo}))">Publicar ' +
+        (sinPub.length === 1 ? 'a 1 persona' : 'a ' + sinPub.length + ' personas') + '</button>' +
+        '<button class="b-ghost" onclick="guardarAjustes(false)">Sólo guardar, sin publicar</button>' :
+        '<button class="b-dark" onclick="guardarAjustes(false)">Guardar cambios</button>') : '') +
     '<button class="b-ghost" onclick="inicio()">Volver</button>');
 }
 function todosA(id) {
@@ -1714,6 +1726,7 @@ async function volverBase(i) {
 async function guardarAjustes(publicar) {
   var r = estado.ajustes, cambios = [];
   r.personas.forEach(function (p, i) {
+    if (!$('aj' + i)) return;
     var v = $('aj' + i).value.replace(/\s/g, '').replace(/[–—]/g, '-');
     var sd = $('ajs' + i).value;
     var actualH = p.ajuste ? p.ajuste.horario : p.base;
@@ -1726,10 +1739,10 @@ async function guardarAjustes(publicar) {
     cambios.push({ correo: p.correo, horario: v, sede: sd });
   });
   if (!cambios.length && !publicar) return alertar('No cambiaste ningún horario.', 'a-neutral');
-  var res = await enviar({ accion: 'ajustes_guardar', fecha: r.fecha, cambios: cambios, motivo: ($('ajMotivo').value || '').trim(), publicar: !!publicar });
+  var res = await enviar({ accion: 'ajustes_guardar', fecha: r.fecha, cambios: cambios, motivo: ($('ajMotivo') ? $('ajMotivo').value : '').trim(), publicar: publicar || false });
   if (!res.ok) return alertar(res.error, 'a-err');
   await pantallaAjustes(r.fecha);
-  var msg = publicar ? 'Horarios publicados. ' + res.correos + (res.correos === 1 ? ' persona recibió' : ' personas recibieron') + ' su horario por correo.' :
+  var msg = publicar ? (res.publicados === 1 ? 'Publicado. ' : res.publicados + ' horarios publicados. ') + 'Les llegó su horario a la app y al correo.' :
     'Listo: ' + cambios.length + (cambios.length === 1 ? ' cambio guardado' : ' cambios guardados') + (res.correos ? ' y avisado por correo.' : '.');
   if (res.avisos && res.avisos.length) {
     var d = document.createElement('div'); d.className = 'aviso a-warn';
@@ -1786,6 +1799,11 @@ function editarPersona(i) {
     '<div class="campo"><label>Puesto</label><input id="pPuesto" value="' + esc(p.puesto) + '" placeholder="Enfermería, recepción, almacén…"></div>' +
     '<div class="dos"><div class="campo"><label>Sede habitual</label><select id="pSede">' + sedes + '</select></div>' +
     '<div class="campo"><label>Rol</label><select id="pRol">' + rol + '</select></div></div>' +
+    '<div class="campo"><label>Le asigna su horario</label><select id="pResp">' +
+      '<option value="">Automático: la jefatura de su sede habitual</option>' +
+      r.personal.filter(function (j) { return j.activo === 'SI' && j.rol !== 'COLABORADOR' && j.correo !== p.correo; }).map(function (j) {
+        return '<option value="' + esc(String(j.correo).toLowerCase()) + '"' + (String(p.responsable || '').toLowerCase() === String(j.correo).toLowerCase() ? ' selected' : '') + '>' + esc(j.nombre) + '</option>';
+      }).join('') + '</select></div>' +
     '</div>' +
     '<div class="card"><label class="check"><input type="checkbox" id="pConf"' + (p.confianza === 'SI' ? ' checked' : '') +
       ' onchange="$(\'cardHorario\').style.opacity=this.checked?.35:1"> De confianza: horario libre</label>' +
@@ -1809,7 +1827,7 @@ function copiarLunes() { var v = $('h_lun').value; ['mar', 'mie', 'jue', 'vie'].
 async function guardarPersona() {
   var x = { correo: $('pCorreo').value, nombre: $('pNombre').value, puesto: $('pPuesto').value,
             sede_base: $('pSede').value, rol: $('pRol').value, comida_min: $('pComida').value,
-            notas: $('pNotas').value, activo: $('pActivo').checked ? 'SI' : 'NO', confianza: $('pConf').checked ? 'SI' : '' };
+            notas: $('pNotas').value, activo: $('pActivo').checked ? 'SI' : 'NO', confianza: $('pConf').checked ? 'SI' : '', responsable: $('pResp').value };
   DIAS.forEach(function (d) { x[d] = $('h_' + d).value.replace(/\s/g, '').replace(/[–—]/g, '-'); });
   var r = await enviar({ accion: 'personal_guardar', persona: x });
   if (!r.ok) return alertar(r.error, 'a-err');
