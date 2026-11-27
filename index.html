@@ -1677,10 +1677,18 @@ async function pantallaAjustes(fecha) {
       '<span style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">' +
         (p.publicado ? pill(['Publicado · ' + String(p.publicado.autor || '').split(' ')[0].replace('Dr.', 'Dr. Soto'), 'p-ok']) : pill(['Sin publicar', 'p-neutral'])) +
         (p.ajuste ? pill(['Ajustado' + (p.ajuste.autor ? ' · ' + p.ajuste.autor.split(' ')[0].replace('Dr.', 'Dr. Soto') : ''), 'p-warn']) : '') + '</span></div>' +
-      '<div style="display:grid;grid-template-columns:auto 1fr auto;gap:7px;align-items:center;padding:0 4px">' +
-      '<button class="b-chico" style="background:var(--surface);color:var(--ink);border:1px solid var(--rule)" onclick="mover(' + i + ',-30)" ' + (r.editable ? '' : 'disabled') + '>−30′</button>' +
-      '<input id="aj' + i + '" value="' + esc(desc ? '' : val) + '" placeholder="descansa" inputmode="numeric" style="text-align:center;font-family:\'IBM Plex Mono\',monospace" ' + (r.editable ? '' : 'disabled') + '>' +
-      '<button class="b-chico" style="background:var(--surface);color:var(--ink);border:1px solid var(--rule)" onclick="mover(' + i + ',30)" ' + (r.editable ? '' : 'disabled') + '>+30′</button></div>' +
+      // Trabaja / Descansa + entrada y salida con el reloj del teléfono (no se teclea).
+      '<input type="hidden" id="aj' + i + '" value="' + esc(desc ? '' : val) + '">' +
+      '<div class="seg" style="display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:0 4px 8px">' +
+        '<button id="ajT' + i + '" class="b-chico" onclick="ponTrabaja(' + i + ',true)" ' + (r.editable ? '' : 'disabled') + '>Trabaja</button>' +
+        '<button id="ajD' + i + '" class="b-chico" onclick="ponTrabaja(' + i + ',false)" ' + (r.editable ? '' : 'disabled') + '>Descansa</button></div>' +
+      '<div id="ajH' + i + '" style="padding:0 4px">' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px">' +
+          '<label class="mini">Entra<input type="time" id="ajI' + i + '" onchange="sincAj(' + i + ')" ' + (r.editable ? '' : 'disabled') + '></label>' +
+          '<label class="mini">Sale<input type="time" id="ajF' + i + '" onchange="sincAj(' + i + ')" ' + (r.editable ? '' : 'disabled') + '></label></div>' +
+        '<div style="display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:7px">' +
+          '<button class="b-chico" style="background:var(--surface);color:var(--ink);border:1px solid var(--rule)" onclick="mover(' + i + ',-30)" ' + (r.editable ? '' : 'disabled') + '>Todo −30′</button>' +
+          '<button class="b-chico" style="background:var(--surface);color:var(--ink);border:1px solid var(--rule)" onclick="mover(' + i + ',30)" ' + (r.editable ? '' : 'disabled') + '>Todo +30′</button></div></div>' +
       '<div style="padding:7px 4px 0"><select id="ajs' + i + '" ' + (r.editable ? '' : 'disabled') + '>' + opcSedes(sedeSel) + '</select></div>' +
       (p.ajuste ? '<p class="mini" style="margin:6px 4px 0">' + (p.ajuste.motivo ? '«' + esc(p.ajuste.motivo) + '» · ' : '') +
         (r.editable ? '<a href="#" onclick="volverBase(' + i + ');return false" style="color:var(--accent-deep)">volver a su horario base</a>' : '') + '</p>' : '') +
@@ -1690,7 +1698,7 @@ async function pantallaAjustes(fecha) {
   pintar('<div class="campo"><label>Día</label><input type="date" value="' + r.fecha + '" onchange="pantallaAjustes(this.value)"></div>' +
     (r.editable ? estadoPub : '') +
     (r.editable ? '' : '<div class="aviso a-neutral">Es un día pasado: se puede consultar pero no cambiar, porque cambiaría retardos que ya ocurrieron.</div>') +
-    '<div class="aviso a-neutral">Mueve sólo a quien cambia. Formato 07:00-16:00; vacío = descansa ese día. La sede es dónde debe <b>llegar</b>; la comida y la salida valen en cualquier sede.</div>' +
+    '<div class="aviso a-neutral">Mueve sólo a quien cambia. Los descansos se mueven libremente: toca <b>Trabaja</b> o <b>Descansa</b> y elige la hora de entrada y salida. La sede es dónde debe <b>llegar</b>; la comida y la salida valen en cualquier sede.</div>' +
     (r.editable && r.personas.length > 1 ? '<div class="campo"><label>Todos llegan a</label><select onchange="todosA(this.value)"><option value="">— elegir para mover a todos —</option>' +
       r.sedes.map(function (x) { return '<option value="' + esc(x.id) + '">' + esc(x.nombre) + '</option>'; }).join('') + '</select></div>' : '') +
     '<div class="card">' + (filas || '<p class="sub">No hay personal con horario.</p>') + '</div>' +
@@ -1698,6 +1706,24 @@ async function pantallaAjustes(fecha) {
       '<button class="b-dark" onclick="guardarAjustes(false)">Guardar cambios</button>' +
       (sinPub.length > 1 ? '<button class="b-ghost" onclick="guardarAjustes(estado.ajustes.personas.filter(function(p){return !p.publicado}).map(function(p){return p.correo}))">Publicar a las ' + sinPub.length + ' que faltan</button>' : '') : '') +
     '<button class="b-ghost" onclick="inicio()">Volver</button>');
+  r.personas.forEach(function (p, i) { if ($('aj' + i)) pintaFila(i); });
+}
+/* Pinta el estado Trabaja/Descansa de la fila i a partir de su valor oculto. */
+function pintaFila(i) {
+  var v = $('aj' + i).value, trabaja = !!v, m = v.match(/^(\d{1,2}:\d{2})-(\d{1,2}:\d{2})$/);
+  $('ajT' + i).style.cssText = trabaja ? '' : 'background:var(--surface);color:var(--ink);border:1px solid var(--rule)';
+  $('ajD' + i).style.cssText = trabaja ? 'background:var(--surface);color:var(--ink);border:1px solid var(--rule)' : '';
+  $('ajH' + i).style.display = trabaja ? '' : 'none';
+  if (m) { $('ajI' + i).value = m[1].padStart(5, '0'); $('ajF' + i).value = m[2].padStart(5, '0'); }
+}
+function ponTrabaja(i, si) {
+  var p = estado.ajustes.personas[i];
+  $('aj' + i).value = si ? ($('aj' + i).value || p.base || p.habitual) : '';
+  pintaFila(i);
+}
+function sincAj(i) {
+  var a = $('ajI' + i).value, b = $('ajF' + i).value;
+  if (a && b) $('aj' + i).value = a + '-' + b;
 }
 function todosA(id) {
   if (!id) return;
@@ -1705,9 +1731,9 @@ function todosA(id) {
 }
 function mover(i, d) {
   var inp = $('aj' + i), p = estado.ajustes.personas[i];
-  var v = inp.value || p.base;
-  if (!v) return alertar('Escribe primero un horario, ej. 08:00-17:00.', 'a-warn');
+  var v = inp.value || p.base || p.habitual;
   inp.value = moverHorario(v, d);
+  pintaFila(i);
 }
 async function volverBase(i) {
   var p = estado.ajustes.personas[i];
@@ -1801,7 +1827,7 @@ function editarPersona(i) {
       'Sólo se avisa si un día pasa de 12 horas. Quién es de confianza lo definen sus funciones, no el puesto.</p></div>' +
     '<div class="card" id="cardHorario"' + (p.confianza === 'SI' ? ' style="opacity:.35"' : '') + '><h3>Horario</h3><p class="mini">Formato 08:00-17:00. Vacío = descanso. Un turno nocturno se escribe 20:00-08:00.</p>' +
     '<div class="dias7">' + DIAS.map(function (d) {
-      return '<span class="d">' + DIA_LARGO[d] + '</span><input id="h_' + d + '" value="' + esc(p[d] || '') + '" placeholder="descanso" inputmode="numeric">';
+      return '<span class="d">' + DIA_LARGO[d] + '</span><input id="h_' + d + '" value="' + esc(p[d] || '') + '" placeholder="descanso" inputmode="text" autocapitalize="off">';
     }).join('') + '</div>' +
     '<button class="b-ghost" onclick="copiarLunes()">Copiar el lunes a martes–viernes</button>' +
     '<div class="campo" style="margin-top:13px"><label>Minutos de comida</label><input id="pComida" type="number" value="' + esc(p.comida_min || 30) + '"></div>' +
